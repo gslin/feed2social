@@ -2,6 +2,10 @@
 
 Sync feed to social networks.
 
+## Supported platforms
+
+* Plurk
+
 ## Install
 
     pip install -r requirements.txt
