@@ -73,7 +73,7 @@ class Feed2Facebook(object):
         # Workaround: cannot use allow_tags=[]:
         cl = Cleaner(allow_tags=[''])
 
-        for item in items:
+        for item in reversed(items):
             # Print out details.
             print('* item = {}'.format(item))
 
