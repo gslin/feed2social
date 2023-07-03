@@ -15,6 +15,7 @@ Sync feed to social networks.
 
 ## Run
 
+    ./feed2facebook.py
     ./feed2plurk.py
 
 ## License
