@@ -85,6 +85,12 @@ class Feed2Facebook(object):
             # Remove root's "div".
             text = text.replace('<div>', '').replace('</div>', '')
 
+            # <p> and </p>
+            text = text.replace('<p>', '\n').replace('</p>', '\n')
+
+            # unescape
+            text = html.unescape(text)
+
             # Generate parameters.
             id_str = item['id']
             url = item['id']
