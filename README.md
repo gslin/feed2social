@@ -9,7 +9,7 @@ Sync feed to social networks.
 ## Install
 
     pip install -r requirements.txt
-    echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2facebook.db
+    echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2plurk.db
 
 ## Run
 
