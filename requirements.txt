@@ -1,0 +1,4 @@
+feedparser
+lxml
+plurk-oauth
+requests
