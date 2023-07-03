@@ -80,7 +80,7 @@ class Feed2Facebook(object):
             # Craft "text".
             #
             # First to remove all tags except "a" and root's "div".
-            text = cl.clean_html(item['content_html'])
+            text = cl.clean_html(item['description'])
 
             # Remove root's "div".
             text = text.replace('<div>', '').replace('</div>', '')
