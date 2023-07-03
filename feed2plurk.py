@@ -17,8 +17,8 @@ class Feed2Plurk(object):
 
     def start(self):
         home = os.environ['HOME']
-        f_conf = '{}/.config/feed2plurk/config.ini'.format(home)
-        f_db = '{}/.config/feed2plurk/entry.sqlite3'.format(home)
+        f_conf = '{}/.config/feed2social/config.ini'.format(home)
+        f_db = '{}/.config/feed2social/feed2plurk.sqlite3'.format(home)
 
         c = configparser.ConfigParser()
         c.read(f_conf)
