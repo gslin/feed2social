@@ -40,7 +40,7 @@ class Feed2Plurk(object):
         sql_select = 'SELECT COUNT(*) FROM entry WHERE entry_id = ?;'
 
         # Workaround: cannot use allow_tags=[]:
-        cl = Cleaner(allow_tags=[''])
+        cl = Cleaner(allow_tags=['p'])
 
         for item in reversed(items):
             # Print out details.
