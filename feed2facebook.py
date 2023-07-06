@@ -76,10 +76,6 @@ class Feed2Facebook(object):
         for item in reversed(items):
             text = item['description']
 
-            # Skip if there is "#nofb" tag.
-            if '#nofb' in text:
-                continue
-
             # Print out details.
             print('* item = {}'.format(item))
 
@@ -87,6 +83,10 @@ class Feed2Facebook(object):
             #
             # First to remove all tags except "a" and root's "div".
             text = cl.clean_html(text)
+
+            # Skip if there is "#nofb" tag.
+            if '#nofb' in text:
+                continue
 
             # Remove root's "div".
             text = text.replace('<div>', '').replace('</div>', '')

@@ -45,10 +45,6 @@ class Feed2Plurk(object):
         for item in reversed(items):
             text = item['description']
 
-            # Skip if there is '#noplurk' tag.
-            if '#noplurk' in text:
-                continue
-
             # Print out details.
             print('* item = {}'.format(item))
 
@@ -56,6 +52,10 @@ class Feed2Plurk(object):
             #
             # First to remove all tags except "a" and root's "div".
             text = cl.clean_html(text)
+
+            # Skip if there is '#noplurk' tag.
+            if '#noplurk' in text:
+                continue
 
             # Remove root's "div".
             text = text.replace('<div>', '').replace('</div>', '')
