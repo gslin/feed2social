@@ -30,8 +30,8 @@ class Feed2Facebook(object):
 
         options = selenium.webdriver.FirefoxOptions()
         options.binary_location = '/usr/bin/firefox-esr'
-        options.headless = True
         options.profile = home + '/.mozilla/firefox-esr/selenium'
+        options.add_argument('-headless')
 
         self.b = selenium.webdriver.Firefox(service=service, options=options)
 
