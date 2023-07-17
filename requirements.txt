@@ -2,3 +2,4 @@ feedparser
 lxml
 plurk-oauth
 requests
+selenium
