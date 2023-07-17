@@ -15,7 +15,7 @@ import time
 
 from lxml.html.clean import Cleaner
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+from selenium.webdriver.firefox.service import Service
 
 class Feed2Facebook(object):
     b = None
@@ -26,14 +26,14 @@ class Feed2Facebook(object):
 
         home = os.environ['HOME']
 
-        firefox_binary = '/usr/bin/firefox-esr'
-        profile_dir = home + '/.mozilla/firefox-esr/selenium'
+        service = Service('/usr/bin/geckodriver')
 
-        options = selenium.webdriver.firefox.options.Options()
+        options = selenium.webdriver.FirefoxOptions()
+        options.binary_location = '/usr/bin/firefox-esr'
         options.headless = True
-        options.profile = profile_dir
+        options.profile = home + '/.mozilla/firefox-esr/selenium'
 
-        self.b = selenium.webdriver.Firefox(firefox_binary=FirefoxBinary(firefox_binary), options=options)
+        self.b = selenium.webdriver.Firefox(service=service, options=options)
 
     def post(self, text):
         self.init_browser()
