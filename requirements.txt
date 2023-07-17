@@ -3,3 +3,4 @@ lxml
 plurk-oauth
 requests
 selenium
+sentry_sdk
