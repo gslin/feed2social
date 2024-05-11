@@ -66,8 +66,8 @@ class Feed2Plurk(object):
             # unescape
             text = html.unescape(text)
 
-            # Limit to 300 chars.
-            text = text[0:300]
+            # Limit to 200 chars.
+            text = text[0:200]
 
             # Generate parameters.
             id_str = item['id']
