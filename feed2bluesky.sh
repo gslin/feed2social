@@ -10,4 +10,4 @@ elif [[ -d "${HOME}/.pyenv"]]; then
 fi
 
 BASEDIR="$(dirname $0)"
-"${BASEDIR}/feed2bluesky.py" || true
+LANG=en_US.UTF-8 "${BASEDIR}/feed2bluesky.py" || true
