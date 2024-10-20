@@ -41,28 +41,31 @@ class Feed2Bluesky(object):
         cl = Cleaner(allow_tags=['p'])
 
         for item in reversed(items):
-            text = item['description']
+            body = item['description']
 
             # Print out details.
             print('* item = {}'.format(item))
 
-            # Craft "text".
+            # Craft "body".
             #
             # First to remove all tags except "a" and root's "div".
-            text = cl.clean_html(text)
+            body = cl.clean_html(body)
 
             # Skip if there is '#nobluesky' tag.
-            if '#nobluesky' in text:
+            if '#nobluesky' in body:
                 continue
 
             # Remove root's "div".
-            text = text.replace('<div>', '').replace('</div>', '')
+            body = body.replace('<div>', '').replace('</div>', '')
 
             # <p> and </p>
-            text = text.replace('<p>', '\n').replace('</p>', '\n')
+            body = body.replace('<p>', '\n').replace('</p>', '\n')
 
             # unescape
-            text = html.unescape(text)
+            body = html.unescape(body)
+
+            # Limit to 200 chars.
+            body = body[0:200]
 
             # Generate parameters.
             id_str = item['id']
@@ -72,10 +75,10 @@ class Feed2Bluesky(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n{}'.format(text, url)
+                content = '{}\n\n{}'.format(body, url)
                 print('* content = {}'.format(content))
 
-                text = atproto.client_utils.TextBuilder().text(text)
+                text = atproto.client_utils.TextBuilder().text(content)
                 post = client.send_post(text)
 
                 print('* type(post) = {}'.format(type(post)))
