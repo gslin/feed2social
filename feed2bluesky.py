@@ -83,7 +83,7 @@ class Feed2Bluesky(object):
 
                 print('* type(post) = {}'.format(type(post)))
                 print('* post = {}'.format(post))
-                if type(post) is object and post.cid:
+                if isinstance(post, object) and post.cid:
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                 else:

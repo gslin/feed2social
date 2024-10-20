@@ -89,7 +89,7 @@ class Feed2Plurk(object):
                 print('* item = {}'.format(item))
                 print('* type(res) = {}'.format(type(res)))
                 print('* res = {}'.format(res))
-                if type(res) is dict and res['plurk_id'] > 0:
+                if isinstance(res, dict) and res['plurk_id'] > 0:
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                 else:
