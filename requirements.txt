@@ -6,3 +6,4 @@ plurk-oauth
 requests
 selenium
 sentry_sdk
+setuptools
