@@ -1,6 +1,7 @@
 atproto
 feedparser
 lxml
+lxml_html_clean
 plurk-oauth
 requests
 selenium
