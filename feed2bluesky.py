@@ -78,11 +78,9 @@ class Feed2Bluesky(object):
                 text = atproto.client_utils.TextBuilder().text(text)
                 post = client.send_post(text)
 
-                print('* type(item) = {}'.format(type(item)))
-                print('* item = {}'.format(item))
-                print('* type(res) = {}'.format(type(res)))
-                print('* res = {}'.format(res))
-                if type(res) is dict and res['plurk_id'] > 0:
+                print('* type(post) = {}'.format(type(post)))
+                print('* post = {}'.format(post))
+                if type(post) is dict and post['id'] > 0:
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                 else:
