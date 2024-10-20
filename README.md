@@ -4,6 +4,7 @@ Sync feed to social networks.
 
 ## Supported platforms
 
+* Bluesky
 * Facebook (via mbasic.facebook.com)
 * Plurk
 
