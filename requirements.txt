@@ -1,3 +1,4 @@
+atproto
 feedparser
 lxml
 plurk-oauth
