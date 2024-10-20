@@ -2,7 +2,7 @@
 
 #
 # Support mise & pyenv & native environment:
-if command -v mise; then
+if command -v mise > /dev/null; then
     eval "$(mise activate bash)"
 elif [[ -d "${HOME}/.pyenv" ]]; then
     export PATH="${HOME}/.pyenv/shims:${HOME}/.pyenv/bin:${PATH}"
