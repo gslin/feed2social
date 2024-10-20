@@ -75,7 +75,7 @@ class Feed2Bluesky(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n{}'.format(body, url)
+                content = '{}\n\n{}'.format(body, url)
                 print('* content = {}'.format(content))
 
                 text = atproto.client_utils.TextBuilder().text(content)
