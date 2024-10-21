@@ -14,6 +14,7 @@ from lxml.html.clean import Cleaner
 
 class Feed2Bluesky(object):
     _client = None
+    _config = None
 
     def __init__(self):
         pass
@@ -21,23 +22,29 @@ class Feed2Bluesky(object):
     @property
     def client(self):
         if self._client is None:
-            bsky_username = c['default']['bluesky_username']
-            bsky_password = c['default']['bluesky_password']
+            bsky_username = self.config['default']['bluesky_username']
+            bsky_password = self.config['default']['bluesky_password']
             self._client = atproto.Client()
             profile = self._client.login(bsky_username, bsky_password)
         return self._client
+
+    @property
+    def config(self):
+        if self._config is None:
+            home = os.environ['HOME']
+            f_conf = '{}/.config/feed2social/config.ini'.format(home)
+
+            self._config = configparser.ConfigParser()
+            self._config.read(f_conf)
+        return self._config
 
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
         home = os.environ['HOME']
-        f_conf = '{}/.config/feed2social/config.ini'.format(home)
         f_db = '{}/.config/feed2social/feed2bluesky.sqlite3'.format(home)
 
-        c = configparser.ConfigParser()
-        c.read(f_conf)
-
-        feed_url = c['default']['feed_url']
+        feed_url = self.config['default']['feed_url']
         feed = feedparser.parse(feed_url)
         items = feed.entries
 

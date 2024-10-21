@@ -21,25 +21,30 @@ class Feed2Plurk(object):
     @property
     def client(self):
         if self._client is None:
-            p_ak = c['default']['plurk_app_key']
-            p_as = c['default']['plurk_app_secret']
-            p_tk = c['default']['plurk_token']
-            p_ts = c['default']['plurk_token_secret']
+            p_ak = self.config['default']['plurk_app_key']
+            p_as = self.config['default']['plurk_app_secret']
+            p_tk = self.config['default']['plurk_token']
+            p_ts = self.config['default']['plurk_token_secret']
             self._client = plurk_oauth.PlurkAPI(p_ak, p_as)
             self._client.authorize(p_tk, p_ts)
         return self._client
+
+    @property
+    def config(self):
+        if self._config is None:
+            home = os.environ['HOME']
+            f_conf = '{}/.config/feed2social/config.ini'.format(home)
+            self._config = configparser.ConfigParser()
+            self._config.read(f_conf)
+        return self._config
 
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
         home = os.environ['HOME']
-        f_conf = '{}/.config/feed2social/config.ini'.format(home)
         f_db = '{}/.config/feed2social/feed2plurk.sqlite3'.format(home)
 
-        c = configparser.ConfigParser()
-        c.read(f_conf)
-
-        feed_url = c['default']['feed_url']
+        feed_url = self.config['default']['feed_url']
         feed = feedparser.parse(feed_url)
         items = feed.entries
 
