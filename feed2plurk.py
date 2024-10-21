@@ -16,7 +16,7 @@ class Feed2Plurk(object):
     def __init__(self):
         pass
 
-    def start(self):
+    def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
         home = os.environ['HOME']
@@ -100,4 +100,4 @@ class Feed2Plurk(object):
 
 if '__main__' == __name__:
     t = Feed2Plurk()
-    t.start()
+    t.main()

@@ -25,7 +25,7 @@ class Feed2Bluesky(object):
             profile = self.client.login(bsky_username, bsky_password)
         return self.client
 
-    def start(self):
+    def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
         home = os.environ['HOME']
@@ -98,4 +98,4 @@ class Feed2Bluesky(object):
 
 if '__main__' == __name__:
     t = Feed2Bluesky()
-    t.start()
+    t.main()
