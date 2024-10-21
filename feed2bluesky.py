@@ -47,8 +47,8 @@ class Feed2Bluesky(object):
         for item in reversed(items):
             body = item['description']
 
-            # Print out details.
-            print('* item = {}'.format(item))
+            # Print out item's id.
+            print('* item.id = {}'.format(item.id))
 
             # Craft "body".
             #
