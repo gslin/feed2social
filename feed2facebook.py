@@ -19,7 +19,18 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 
 class Feed2Facebook(object):
+    _config = None
     b = None
+
+    @property
+    def config(self):
+        if self._config is None:
+            home = os.environ['HOME']
+            f_conf = '{}/.config/feed2social/config.ini'.format(home)
+
+            self._config = configparser.ConfigParser()
+            self._config.read(f_conf)
+        return self._config
 
     def init_browser(self):
         if self.b is not None:
@@ -58,12 +69,9 @@ class Feed2Facebook(object):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
         home = os.environ['HOME']
-        f_conf = '{}/.config/feed2social/config.ini'.format(home)
         f_db = '{}/.config/feed2social/feed2facebook.sqlite3'.format(home)
 
-        c = configparser.ConfigParser()
-        c.read(f_conf)
-
+        c = self.config
         if 'sentry_sdk_url' in c['default'] and '' != c['default']['sentry_sdk_url']:
             sentry_sdk_url = c['default']['sentry_sdk_url']
             sentry_sdk.init(sentry_sdk_url)
