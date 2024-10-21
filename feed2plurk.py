@@ -18,14 +18,14 @@ class Feed2Plurk(object):
 
     @property
     def client(self):
-        if self.client is None:
+        if self._client is None:
             p_ak = c['default']['plurk_app_key']
             p_as = c['default']['plurk_app_secret']
             p_tk = c['default']['plurk_token']
             p_ts = c['default']['plurk_token_secret']
-            self.client = plurk_oauth.PlurkAPI(p_ak, p_as)
-            self.client.authorize(p_tk, p_ts)
-        return self.client
+            self._client = plurk_oauth.PlurkAPI(p_ak, p_as)
+            self._client.authorize(p_tk, p_ts)
+        return self._client
 
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))

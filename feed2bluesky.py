@@ -18,12 +18,12 @@ class Feed2Bluesky(object):
 
     @property
     def client(self):
-        if self.client is None:
+        if self._client is None:
             bsky_username = c['default']['bluesky_username']
             bsky_password = c['default']['bluesky_password']
-            self.client = atproto.Client()
-            profile = self.client.login(bsky_username, bsky_password)
-        return self.client
+            self._client = atproto.Client()
+            profile = self._client.login(bsky_username, bsky_password)
+        return self._client
 
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
