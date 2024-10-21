@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import configparser
+import datetime
 import feedparser
 import html
 import os
@@ -16,6 +17,8 @@ class Feed2Plurk(object):
         pass
 
     def start(self):
+        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
         home = os.environ['HOME']
         f_conf = '{}/.config/feed2social/config.ini'.format(home)
         f_db = '{}/.config/feed2social/feed2plurk.sqlite3'.format(home)

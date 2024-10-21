@@ -2,6 +2,7 @@
 
 import atproto
 import configparser
+import datetime
 import feedparser
 import html
 import os
@@ -25,6 +26,8 @@ class Feed2Bluesky(object):
         return self.client
 
     def start(self):
+        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
         home = os.environ['HOME']
         f_conf = '{}/.config/feed2social/config.ini'.format(home)
         f_db = '{}/.config/feed2social/feed2bluesky.sqlite3'.format(home)
