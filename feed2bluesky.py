@@ -13,6 +13,8 @@ import time
 from lxml.html.clean import Cleaner
 
 class Feed2Bluesky(object):
+    _client = None
+
     def __init__(self):
         pass
 
