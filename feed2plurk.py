@@ -16,6 +16,17 @@ class Feed2Plurk(object):
     def __init__(self):
         pass
 
+    @property
+    def client(self):
+        if self.client is None:
+            p_ak = c['default']['plurk_app_key']
+            p_as = c['default']['plurk_app_secret']
+            p_tk = c['default']['plurk_token']
+            p_ts = c['default']['plurk_token_secret']
+            self.client = plurk_oauth.PlurkAPI(p_ak, p_as)
+            self.client.authorize(p_tk, p_ts)
+        return self.client
+
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
 
@@ -29,13 +40,6 @@ class Feed2Plurk(object):
         feed_url = c['default']['feed_url']
         feed = feedparser.parse(feed_url)
         items = feed.entries
-
-        p_ak = c['default']['plurk_app_key']
-        p_as = c['default']['plurk_app_secret']
-        p_tk = c['default']['plurk_token']
-        p_ts = c['default']['plurk_token_secret']
-        p = plurk_oauth.PlurkAPI(p_ak, p_as)
-        p.authorize(p_tk, p_ts)
 
         s = sqlite3.connect(f_db)
 
@@ -83,7 +87,7 @@ class Feed2Plurk(object):
                 content = '{}\n\n{}'.format(text, url)
                 print('* content = {}'.format(content))
 
-                res = p.callAPI('/APP/Timeline/plurkAdd', {
+                res = self.client.callAPI('/APP/Timeline/plurkAdd', {
                     'content': content,
                     'qualifier': ':',
                 })
