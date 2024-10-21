@@ -14,6 +14,7 @@ from lxml.html.clean import Cleaner
 
 class Feed2Plurk(object):
     _client = None
+    _config = None
 
     def __init__(self):
         pass
