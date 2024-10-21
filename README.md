@@ -8,6 +8,21 @@ Sync feed to social networks.
 * Facebook (via mbasic.facebook.com)
 * Plurk
 
+## Config
+
+The `~/.config/feed2social/config.ini` file:
+
+```ini
+    [default]
+    bluesky_username = username.bsky.social
+    bluesky_password = x
+    feed_url = https://abpe.org/@gslin.rss
+    plurk_app_key = x
+    plurk_app_secret = x
+    plurk_token = x
+    plurk_token_secret = x
+```
+
 ## Install
 
     pip install -r requirements.txt
