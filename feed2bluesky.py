@@ -15,6 +15,15 @@ class Feed2Bluesky(object):
     def __init__(self):
         pass
 
+    @property
+    def client(self):
+        if self.client is None:
+            bsky_username = c['default']['bluesky_username']
+            bsky_password = c['default']['bluesky_password']
+            self.client = atproto.Client()
+            profile = self.client.login(bsky_username, bsky_password)
+        return self.client
+
     def start(self):
         home = os.environ['HOME']
         f_conf = '{}/.config/feed2social/config.ini'.format(home)
@@ -26,11 +35,6 @@ class Feed2Bluesky(object):
         feed_url = c['default']['feed_url']
         feed = feedparser.parse(feed_url)
         items = feed.entries
-
-        bsky_username = c['default']['bluesky_username']
-        bsky_password = c['default']['bluesky_password']
-        client = atproto.Client()
-        profile = client.login(bsky_username, bsky_password)
 
         s = sqlite3.connect(f_db)
 
@@ -79,7 +83,7 @@ class Feed2Bluesky(object):
                 print('* content = {}'.format(content))
 
                 text = atproto.client_utils.TextBuilder().text(content)
-                post = client.send_post(text)
+                post = self.client.send_post(text)
 
                 print('* type(post) = {}'.format(type(post)))
                 print('* post = {}'.format(post))
