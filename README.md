@@ -36,6 +36,10 @@ The `~/.config/feed2social/config.ini` file:
     ./feed2facebook.py
     ./feed2plurk.py
 
+## Note
+
+If you trace our codebase, you will notice that we have copied many same code across all Python scripts.  This is done intentionally, to keep every script runnable independently.
+
 ## License
 
 See [LICENSE](LICENSE).
