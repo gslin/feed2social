@@ -9,5 +9,5 @@ elif [[ -d "${HOME}/.pyenv" ]]; then
     eval "$(pyenv init -)"
 fi
 
-BASEDIR="$(dirname $0)"
-LANG=en_US.UTF-8 "${BASEDIR}/feed2plurk.py" || true
+cd "$(dirname $0)"
+LANG=en_US.UTF-8 ./feed2plurk.py || true
