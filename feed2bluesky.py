@@ -77,6 +77,9 @@ class Feed2Bluesky(object):
             # <p> and </p>
             body = body.replace('<p>', '\n').replace('</p>', '\n')
 
+            # trim
+            body = body.strip()
+
             # unescape
             body = html.unescape(body)
 

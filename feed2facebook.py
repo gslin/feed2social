@@ -109,6 +109,9 @@ class Feed2Facebook(object):
             # <p> and </p>
             text = text.replace('<p>', '\n').replace('</p>', '\n')
 
+            # trim
+            text = text.strip()
+
             # unescape
             text = html.unescape(text)
 
