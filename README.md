@@ -32,9 +32,17 @@ The `~/.config/feed2social/config.ini` file:
 
 ## Run
 
+Just run it periodically (usually with crontab):
+
     ./feed2bluesky.py
     ./feed2facebook.py
     ./feed2plurk.py
+
+We also support package manager environment like [pyenv](https://github.com/pyenv/pyenv) or [mise](https://github.com/jdx/mise), via shell script wrappers:
+
+    ./feed2bluesky.sh
+    ./feed2facebook.sh
+    ./feed2plurk.sh
 
 ## Workarounds
 
