@@ -13,14 +13,14 @@ Sync feed to social networks.
 The `~/.config/feed2social/config.ini` file:
 
 ```ini
-    [default]
-    bluesky_username = username.bsky.social
-    bluesky_password = x
-    feed_url = https://abpe.org/@gslin.rss
-    plurk_app_key = x
-    plurk_app_secret = x
-    plurk_token = x
-    plurk_token_secret = x
+[default]
+bluesky_username = username.bsky.social
+bluesky_password = x
+feed_url = https://abpe.org/@gslin.rss
+plurk_app_key = x
+plurk_app_secret = x
+plurk_token = x
+plurk_token_secret = x
 ```
 
 ## Install
@@ -34,15 +34,19 @@ The `~/.config/feed2social/config.ini` file:
 
 Just run it periodically (usually with crontab):
 
-    ./feed2bluesky.py
-    ./feed2facebook.py
-    ./feed2plurk.py
+```bash
+./feed2bluesky.py
+./feed2facebook.py
+./feed2plurk.py
+```
 
 We also support package manager environment like [pyenv](https://github.com/pyenv/pyenv) or [mise](https://github.com/jdx/mise), via shell script wrappers:
 
-    ./feed2bluesky.sh
-    ./feed2facebook.sh
-    ./feed2plurk.sh
+```bash
+./feed2bluesky.sh
+./feed2facebook.sh
+./feed2plurk.sh
+```
 
 ## Workarounds
 
