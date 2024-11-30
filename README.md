@@ -2,11 +2,14 @@
 
 Sync feed to social networks.
 
-## Supported platforms
+## Platforms are supported
 
 * Bluesky
-* Facebook (via mbasic.facebook.com)
 * Plurk
+
+## Platforms used to be supported
+
+* Facebook (via mbasic.facebook.com, which is not working anymore)
 
 ## Config
 
