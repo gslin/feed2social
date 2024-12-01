@@ -55,14 +55,24 @@ class Feed2Facebook(object):
         self.init_browser()
 
         b = self.b
-        url = 'https://mbasic.facebook.com/'
+        url = 'https://www.facebook.com/gslin'
 
         b.get(url)
 
-        t = b.find_element(by=By.CSS_SELECTOR, value='#mbasic_inline_feed_composer textarea')
+        # click to popup
+        t = b.find_element(by=By.CSS_SELECTOR, value='a[aria-label] + div[role="button"][tabindex="0"]')
+        t.click()
+
+        # input
+        t = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[role="textbox"]')
         t.send_keys(text)
 
-        btn = b.find_element(by=By.CSS_SELECTOR, value='#mbasic_inline_feed_composer input[value="Post"]')
+        # click "Next"
+        btn = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[aria-label="Next"]')
+        btn.click()
+
+        # click "Post"
+        btn = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[aria-label="Post"]')
         btn.click()
 
     def main(self):
