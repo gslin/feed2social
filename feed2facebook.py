@@ -58,22 +58,28 @@ class Feed2Facebook(object):
         url = 'https://www.facebook.com/gslin'
 
         b.get(url)
+        time.sleep(1)
 
         # click to popup
         t = b.find_element(by=By.CSS_SELECTOR, value='a[aria-label] + div[role="button"][tabindex="0"]')
         t.click()
+        time.sleep(2)
 
         # input
         t = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[role="textbox"]')
-        t.send_keys(text)
+        for c in text:
+            t.send_keys(c)
+        time.sleep(1)
 
         # click "Next"
         btn = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[aria-label="Next"]')
         btn.click()
+        time.sleep(1)
 
         # click "Post"
         btn = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[aria-label="Post"]')
         btn.click()
+        time.sleep(1)
 
     def main(self):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
