@@ -32,6 +32,10 @@ class Feed2Facebook(object):
             self._config.read(f_conf)
         return self._config
 
+    @property
+    def facebook_username(self):
+        return self._config['default']['facebook_username']
+
     def init_browser(self):
         if self.b is not None:
             return
@@ -55,7 +59,7 @@ class Feed2Facebook(object):
         self.init_browser()
 
         b = self.b
-        url = 'https://www.facebook.com/gslin'
+        url = 'https://www.facebook.com/{}'.format(self.facebook_username)
 
         b.get(url)
         time.sleep(1)

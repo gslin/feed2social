@@ -5,11 +5,8 @@ Sync feed to social networks.
 ## Platforms are supported
 
 * Bluesky
+* Facebook
 * Plurk
-
-## Platforms used to be supported
-
-* Facebook (via mbasic.facebook.com, which is not working anymore)
 
 ## Config
 
@@ -19,12 +16,15 @@ The `~/.config/feed2social/config.ini` file:
 [default]
 bluesky_username = username.bsky.social
 bluesky_password = x
+facebook_username = username
 feed_url = https://abpe.org/@gslin.rss
 plurk_app_key = x
 plurk_app_secret = x
 plurk_token = x
 plurk_token_secret = x
 ```
+
+The `facebook_username` is used for generating the url `https://www.facebook.com/${facebook_username}`.
 
 ## Install
 
