@@ -94,11 +94,12 @@ class Feed2Bluesky(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n{}'.format(body, url)
+                content = '{}\n\n'.format(body)
                 print('* content = {}'.format(content))
 
                 tb = atproto.client_utils.TextBuilder()
                 tb.text(content)
+                tb.link(url, url)
                 post = self.client.send_post(tb)
 
                 print('* type(post) = {}'.format(type(post)))
