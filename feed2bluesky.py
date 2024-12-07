@@ -97,8 +97,9 @@ class Feed2Bluesky(object):
                 content = '{}\n\n{}'.format(body, url)
                 print('* content = {}'.format(content))
 
-                text = atproto.client_utils.TextBuilder().text(content)
-                post = self.client.send_post(text)
+                tb = atproto.client_utils.TextBuilder()
+                tb.text(content)
+                post = self.client.send_post(tb)
 
                 print('* type(post) = {}'.format(type(post)))
                 print('* post = {}'.format(post))
