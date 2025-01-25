@@ -89,7 +89,7 @@ class Feed2Threads(object):
                 content = '{}\n\n'.format(body)
                 print('* content = {}'.format(content))
 
-                res = requests.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(body), urllib.parse.quote_plus(threads_access_token)))
+                res = requests.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
 
                 creation_id = res.json()['id']
