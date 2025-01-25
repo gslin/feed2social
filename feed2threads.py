@@ -93,7 +93,7 @@ class Feed2Threads(object):
                 print('* res = {}'.format(res))
 
                 creation_id = res.json()['id']
-                res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}', threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token))
+                res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
 
                 if res.json()['id']:
