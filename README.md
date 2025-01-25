@@ -7,6 +7,7 @@ Sync feed to social networks.
 * Bluesky
 * Facebook
 * Plurk
+* Threads
 
 ## Config
 
@@ -22,6 +23,8 @@ plurk_app_key = x
 plurk_app_secret = x
 plurk_token = x
 plurk_token_secret = x
+threads_access_token = x
+threads_user_id = x
 ```
 
 The `facebook_username` is used for generating the url `https://www.facebook.com/${facebook_username}`.
@@ -32,6 +35,7 @@ The `facebook_username` is used for generating the url `https://www.facebook.com
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2bluesky.sqlite3
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2facebook.sqlite3
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2plurk.sqlite3
+    echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2threads.sqlite3
 
 ## Run
 
@@ -41,6 +45,7 @@ Just run it periodically (usually with crontab):
 ./feed2bluesky.py
 ./feed2facebook.py
 ./feed2plurk.py
+./feed2threads.py
 ```
 
 We also support package manager environment like [pyenv](https://github.com/pyenv/pyenv) or [mise](https://github.com/jdx/mise), via shell script wrappers:
@@ -49,6 +54,7 @@ We also support package manager environment like [pyenv](https://github.com/pyen
 ./feed2bluesky.sh
 ./feed2facebook.sh
 ./feed2plurk.sh
+./feed2threads.sh
 ```
 
 ## Workarounds
