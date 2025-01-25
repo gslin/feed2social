@@ -79,7 +79,7 @@ class Feed2Threads(object):
             body = html.unescape(body)
 
             # Limit to 200 chars.
-            text = text[0:200]
+            body = body[0:200]
 
             # Generate parameters.
             id_str = item['id']
