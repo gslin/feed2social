@@ -86,7 +86,7 @@ class Feed2Threads(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n'.format(body)
+                content = '{}\n\n{}'.format(body, url)
                 print('* content = {}'.format(content))
 
                 res = requests.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
