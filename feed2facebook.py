@@ -71,6 +71,8 @@ class Feed2Facebook(object):
 
         # input
         t = b.find_element(by=By.CSS_SELECTOR, value='div[role="dialog"] div[role="textbox"]')
+        t.click()
+        time.sleep(1)
         for c in text:
             t.send_keys(c)
         time.sleep(1)
