@@ -94,6 +94,9 @@ class Feed2Threads(object):
 
                 res = requests.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
+                if res.status_code != 200:
+                    print('* res.text = {}'.format(res.text))
+                    continue
 
                 creation_id = res.json()['id']
                 res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
