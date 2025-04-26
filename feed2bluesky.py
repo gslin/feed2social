@@ -88,7 +88,7 @@ class Feed2Bluesky(object):
 
             # Generate parameters.
             id_str = item['id']
-            url = item['id']
+            url = item['link']
 
             c = s.cursor()
 
