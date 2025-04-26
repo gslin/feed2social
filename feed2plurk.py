@@ -95,7 +95,7 @@ class Feed2Plurk(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n{}'.format(text, url)
+                content = text
                 print('* content = {}'.format(content))
 
                 res = self.client.callAPI('/APP/Timeline/plurkAdd', {
@@ -112,6 +112,12 @@ class Feed2Plurk(object):
                     s.commit()
                 else:
                     s.rollback()
+
+                plurk_id = res['plurk_id']
+                res = self.client.callAPI('/APP/Responses/responseAdd', {
+                    content: url,
+                    plurk_id: plurk_id,
+                })
 
 if '__main__' == __name__:
     t = Feed2Plurk()
