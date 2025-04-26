@@ -117,6 +117,7 @@ class Feed2Plurk(object):
                 res = self.client.callAPI('/APP/Responses/responseAdd', {
                     'content': url,
                     'plurk_id': plurk_id,
+                    'qualifier': ':',
                 })
                 print('* type(res) = {}'.format(type(res)))
                 print('* res = {}'.format(res))
