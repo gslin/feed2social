@@ -118,6 +118,8 @@ class Feed2Plurk(object):
                     'content': url,
                     'plurk_id': plurk_id,
                 })
+                print('* type(res) = {}'.format(type(res)))
+                print('* res = {}'.format(res))
 
 if '__main__' == __name__:
     t = Feed2Plurk()
