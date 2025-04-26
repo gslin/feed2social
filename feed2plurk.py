@@ -115,8 +115,8 @@ class Feed2Plurk(object):
 
                 plurk_id = res['plurk_id']
                 res = self.client.callAPI('/APP/Responses/responseAdd', {
-                    content: url,
-                    plurk_id: plurk_id,
+                    'content': url,
+                    'plurk_id': plurk_id,
                 })
 
 if '__main__' == __name__:
