@@ -9,7 +9,7 @@ import re
 import sqlite3
 import time
 
-from atproto import Client
+from atproto import Client, models
 from lxml.html.clean import Cleaner
 
 class Feed2Bluesky(object):
@@ -94,12 +94,11 @@ class Feed2Bluesky(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n'.format(body)
+                content = body
                 print('* content = {}'.format(content))
 
                 tb = atproto.client_utils.TextBuilder()
                 tb.text(content)
-                tb.link(url, url)
                 post = self.client.send_post(tb)
 
                 print('* type(post) = {}'.format(type(post)))
@@ -109,6 +108,14 @@ class Feed2Bluesky(object):
                     s.commit()
                 else:
                     s.rollback()
+
+                tb2 = atproto.client_utils.TextBuilder()
+                tb2.link(url, url)
+
+                post_ref = models.create_strong_ref(post)
+                reply = self.client.send_post(post_ref, reply_to=tb2)
+                print('* type(reply) = {}'.format(type(reply)))
+                print('* reply = {}'.format(reply))
 
 if '__main__' == __name__:
     t = Feed2Bluesky()
