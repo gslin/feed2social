@@ -89,7 +89,7 @@ class Feed2Threads(object):
 
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
-                content = '{}\n\n{}'.format(body, url)
+                content = body
                 print('* content = {}'.format(content))
 
                 # Post to Threads.
@@ -112,6 +112,25 @@ class Feed2Threads(object):
                     s.commit()
                 else:
                     s.rollback()
+
+                # Append feed entry url into replies.
+                #
+                # Step 1
+                post_id = res.json()['id']
+                res = requests.post('https://graph.threads.net/v1.0/me/threads', data={
+                    'media_type': 'TEXT',
+                    'text': url,
+                    'reply_to_id': post_id,
+                    'access_token': threads_access_token,
+                })
+                print('* res = {}'.format(res))
+                print('* res.text = {}'.format(res.text))
+
+                # Step 2
+                creation_id = res.json()['id']
+                res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
+                print('* res = {}'.format(res))
+                print('* res.text = {}'.format(res.text))
 
 if '__main__' == __name__:
     t = Feed2Threads()
