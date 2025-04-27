@@ -113,7 +113,7 @@ class Feed2Bluesky(object):
                 tb2.link(url, url)
 
                 post_ref = models.create_strong_ref(post)
-                reply = self.client.send_post(tb2, reply_to=model.AppBskyFeedPost.ReplyRef(parent=post_ref, root=post_ref))
+                reply = self.client.send_post(tb2, reply_to=models.AppBskyFeedPost.ReplyRef(parent=post_ref, root=post_ref))
                 print('* type(reply) = {}'.format(type(reply)))
                 print('* reply = {}'.format(reply))
 
