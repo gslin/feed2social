@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import atproto
 import configparser
 import datetime
 import feedparser
@@ -10,6 +9,7 @@ import re
 import sqlite3
 import time
 
+from atproto import Client
 from lxml.html.clean import Cleaner
 
 class Feed2Bluesky(object):
@@ -24,7 +24,7 @@ class Feed2Bluesky(object):
         if self._client is None:
             bsky_username = self.config['default']['bluesky_username']
             bsky_password = self.config['default']['bluesky_password']
-            self._client = atproto.Client()
+            self._client = Client()
             profile = self._client.login(bsky_username, bsky_password)
         return self._client
 
