@@ -113,6 +113,7 @@ class Feed2Plurk(object):
                 else:
                     s.rollback()
 
+                # Append feed entry url into comments.
                 plurk_id = res['plurk_id']
                 res = self.client.callAPI('/APP/Responses/responseAdd', {
                     'content': url,
