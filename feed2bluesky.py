@@ -105,6 +105,8 @@ class Feed2Bluesky(object):
                     if len(s) == 0:
                         continue
 
+                    print('* s = {}'.format(s))
+
                     if http_pattern.match(s):
                         tb.link(s, s)
                     else:
