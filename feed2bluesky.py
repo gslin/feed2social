@@ -101,16 +101,14 @@ class Feed2Bluesky(object):
 
                 # Handle links
                 http_pattern = re.compile(r'^https?://[^\s]+')
-                for s in re.split(r'(https?://[^\s]+)', content, flags=re.MULTILINE):
-                    if len(s) == 0:
+                for w in re.split(r'(https?://[^\s]+)', content, flags=re.MULTILINE):
+                    if len(w) == 0:
                         continue
 
-                    print('* s = {}'.format(s))
-
-                    if http_pattern.match(s):
-                        tb.link(s, s)
+                    if http_pattern.match(w):
+                        tb.link(w, w)
                     else:
-                        tb.text(s)
+                        tb.text(w)
 
                 post = self.client.send_post(tb)
 
