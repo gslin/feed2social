@@ -98,7 +98,15 @@ class Feed2Bluesky(object):
                 print('* content = {}'.format(content))
 
                 tb = client_utils.TextBuilder()
-                tb.text(content)
+
+                # Handle links
+                http_pattern = re.compile('https?://[^\s]+')
+                for s in re.split('(https?://[^\s]+)', content):
+                    if http_pattern.match(s):
+                        tb.link(s, s)
+                    else:
+                        tb.text(s)
+
                 post = self.client.send_post(tb)
 
                 print('* type(post) = {}'.format(type(post)))
