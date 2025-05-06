@@ -101,7 +101,7 @@ class Feed2Bluesky(object):
 
                 # Handle links
                 http_pattern = re.compile(r'^https?://[^\s]+')
-                for w in re.split(r'(https?://[^\s]+)', content, flags=re.MULTILINE):
+                for w in re.split(r'(https?://[^\s]+)', content):
                     if len(w) == 0:
                         continue
 
