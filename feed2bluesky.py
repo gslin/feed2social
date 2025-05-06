@@ -100,7 +100,7 @@ class Feed2Bluesky(object):
                 tb = client_utils.TextBuilder()
 
                 # Handle links
-                http_pattern = re.compile('https?://[^ ]+')
+                http_pattern = re.compile('^https?://[^ ]+')
                 for s in re.split('(https?://[^ ]+)', content):
                     if http_pattern.match(s):
                         tb.link(s, s)
