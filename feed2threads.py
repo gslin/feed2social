@@ -119,7 +119,7 @@ class Feed2Threads(object):
                 post_id = res.json()['id']
                 res = requests.post('https://graph.threads.net/v1.0/me/threads', data={
                     'media_type': 'TEXT',
-                    'text': url,
+                    'text': f'Sync from: {url}',
                     'reply_to_id': post_id,
                     'access_token': threads_access_token,
                 })

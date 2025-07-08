@@ -116,7 +116,7 @@ class Feed2Plurk(object):
                 # Append feed entry url into comments.
                 plurk_id = res['plurk_id']
                 res = self.client.callAPI('/APP/Responses/responseAdd', {
-                    'content': url,
+                    'content': f'Sync from: {url}',
                     'plurk_id': plurk_id,
                     'qualifier': ':',
                 })

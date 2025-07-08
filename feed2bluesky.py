@@ -121,6 +121,7 @@ class Feed2Bluesky(object):
                     s.rollback()
 
                 tb2 = client_utils.TextBuilder()
+                tb2.text('Sync from: ')
                 tb2.link(url, url)
 
                 post_ref = models.create_strong_ref(post)
