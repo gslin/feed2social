@@ -37,6 +37,7 @@ class Feed2Twitter(object):
             client_secret=c['default']['twitter_api_key_secret'],
             token=c['default']['twitter_access_token'],
             token_secret=c['default']['twitter_access_token_secret'],
+            force_include_body=True,  # keep JSON payload so Twitter sees the text
         )
 
     def main(self, sync_only=False):
