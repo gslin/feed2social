@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import configparser
 import datetime
 import feedparser
@@ -38,8 +39,11 @@ class Feed2Twitter(object):
             token_secret=c['default']['twitter_access_token_secret'],
         )
 
-    def main(self):
+    def main(self, sync_only=False):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
+        if sync_only:
+            print('* sync_only mode: will not post to Twitter')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2twitter.sqlite3'.format(home)
@@ -101,6 +105,12 @@ class Feed2Twitter(object):
                 content = body
                 print('* content = {}'.format(content))
 
+                if sync_only:
+                    print('* sync_only: skipping post to Twitter')
+                    cur.execute(sql_insert, (id_str, int(time.time())))
+                    s.commit()
+                    continue
+
                 # Post to Twitter.
                 res = httpx.post(
                     'https://api.twitter.com/2/tweets',
@@ -130,5 +140,10 @@ class Feed2Twitter(object):
                 print('* res.text = {}'.format(res.text))
 
 if '__main__' == __name__:
+    parser = argparse.ArgumentParser(description='Sync feed to Twitter')
+    parser.add_argument('--sync-only', action='store_true',
+                        help='Only sync feed to database without posting to Twitter')
+    args = parser.parse_args()
+
     t = Feed2Twitter()
-    t.main()
+    t.main(sync_only=args.sync_only)

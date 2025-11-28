@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import configparser
 import datetime
 import feedparser
@@ -39,8 +40,11 @@ class Feed2Plurk(object):
             self._config.read(f_conf)
         return self._config
 
-    def main(self):
+    def main(self, sync_only=False):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
+        if sync_only:
+            print('* sync_only mode: will not post to Plurk')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2plurk.sqlite3'.format(home)
@@ -98,6 +102,12 @@ class Feed2Plurk(object):
                 content = text
                 print('* content = {}'.format(content))
 
+                if sync_only:
+                    print('* sync_only: skipping post to Plurk')
+                    c.execute(sql_insert, (id_str, int(time.time())))
+                    s.commit()
+                    continue
+
                 res = self.client.callAPI('/APP/Timeline/plurkAdd', {
                     'content': content,
                     'qualifier': ':',
@@ -124,5 +134,10 @@ class Feed2Plurk(object):
                 print('* res = {}'.format(res))
 
 if '__main__' == __name__:
+    parser = argparse.ArgumentParser(description='Sync feed to Plurk')
+    parser.add_argument('--sync-only', action='store_true',
+                        help='Only sync feed to database without posting to Plurk')
+    args = parser.parse_args()
+
     t = Feed2Plurk()
-    t.main()
+    t.main(sync_only=args.sync_only)

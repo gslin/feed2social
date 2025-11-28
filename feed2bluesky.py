@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import configparser
 import datetime
 import feedparser
@@ -38,8 +39,11 @@ class Feed2Bluesky(object):
             self._config.read(f_conf)
         return self._config
 
-    def main(self):
+    def main(self, sync_only=False):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
+        if sync_only:
+            print('* sync_only mode: will not post to Bluesky')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2bluesky.sqlite3'.format(home)
@@ -97,6 +101,12 @@ class Feed2Bluesky(object):
                 content = body
                 print('* content = {}'.format(content))
 
+                if sync_only:
+                    print('* sync_only: skipping post to Bluesky')
+                    c.execute(sql_insert, (id_str, int(time.time())))
+                    s.commit()
+                    continue
+
                 tb = client_utils.TextBuilder()
 
                 # Handle links
@@ -130,5 +140,10 @@ class Feed2Bluesky(object):
                 print('* reply = {}'.format(reply))
 
 if '__main__' == __name__:
+    parser = argparse.ArgumentParser(description='Sync feed to Bluesky')
+    parser.add_argument('--sync-only', action='store_true',
+                        help='Only sync feed to database without posting to Bluesky')
+    args = parser.parse_args()
+
     t = Feed2Bluesky()
-    t.main()
+    t.main(sync_only=args.sync_only)

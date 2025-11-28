@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import argparse
 import configparser
 import datetime
 import feedparser
@@ -86,8 +87,11 @@ class Feed2Facebook(object):
         btn.click()
         time.sleep(1)
 
-    def main(self):
+    def main(self, sync_only=False):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+
+        if sync_only:
+            print('* sync_only mode: will not post to Facebook')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2facebook.sqlite3'.format(home)
@@ -147,6 +151,12 @@ class Feed2Facebook(object):
                 content = '{}\n\n{}'.format(text, url)
                 print('* content = {}'.format(content))
 
+                if sync_only:
+                    print('* sync_only: skipping post to Facebook')
+                    c.execute(sql_insert, (id_str, int(time.time())))
+                    s.commit()
+                    continue
+
                 print(content)
                 self.post(content)
 
@@ -162,4 +172,9 @@ class Feed2Facebook(object):
         self.b.quit()
 
 if __name__ == '__main__':
-    Feed2Facebook().main()
+    parser = argparse.ArgumentParser(description='Sync feed to Facebook')
+    parser.add_argument('--sync-only', action='store_true',
+                        help='Only sync feed to database without posting to Facebook')
+    args = parser.parse_args()
+
+    Feed2Facebook().main(sync_only=args.sync_only)
