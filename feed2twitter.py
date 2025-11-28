@@ -115,6 +115,7 @@ class Feed2Twitter(object):
                 res = httpx.post(
                     'https://api.twitter.com/2/tweets',
                     auth=auth,
+                    headers={'Content-Type': 'application/json'},
                     json={'text': content},
                 )
                 print('* res = {}'.format(res))
@@ -131,6 +132,7 @@ class Feed2Twitter(object):
                 res = httpx.post(
                     'https://api.twitter.com/2/tweets',
                     auth=auth,
+                    headers={'Content-Type': 'application/json'},
                     json={
                         'text': f'Sync from: {url}',
                         'reply': {'in_reply_to_tweet_id': tweet_id},
