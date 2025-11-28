@@ -7,7 +7,6 @@ import feedparser
 import html
 import os
 import re
-import requests
 import selenium
 import selenium.webdriver.firefox.options
 import sentry_sdk

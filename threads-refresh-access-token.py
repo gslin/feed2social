@@ -3,7 +3,7 @@
 import configparser
 import datetime
 import os
-import requests
+import httpx
 
 def main():
     print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
@@ -17,7 +17,7 @@ def main():
     access_token = config['default']['threads_access_token']
 
     # Refresh the long-lived access token.
-    res = requests.get('https://graph.threads.net/refresh_access_token', params={
+    res = httpx.get('https://graph.threads.net/refresh_access_token', params={
         'grant_type': 'th_refresh_token',
         'access_token': access_token,
     })

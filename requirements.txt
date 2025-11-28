@@ -3,7 +3,7 @@ feedparser
 lxml
 lxml_html_clean
 plurk-oauth
-requests
+httpx
 selenium
 sentry_sdk
 setuptools

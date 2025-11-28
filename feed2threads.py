@@ -6,7 +6,7 @@ import feedparser
 import html
 import os
 import re
-import requests
+import httpx
 import sqlite3
 import time
 import urllib
@@ -95,7 +95,7 @@ class Feed2Threads(object):
                 # Post to Threads.
                 #
                 # Step 1
-                res = requests.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
+                res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
                 if res.status_code != 200:
@@ -103,7 +103,7 @@ class Feed2Threads(object):
 
                 # Step 2
                 creation_id = res.json()['id']
-                res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
+                res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
 
@@ -117,7 +117,7 @@ class Feed2Threads(object):
                 #
                 # Step 1
                 post_id = res.json()['id']
-                res = requests.post('https://graph.threads.net/v1.0/me/threads', data={
+                res = httpx.post('https://graph.threads.net/v1.0/me/threads', data={
                     'media_type': 'TEXT',
                     'text': f'Sync from: {url}',
                     'reply_to_id': post_id,
@@ -128,7 +128,7 @@ class Feed2Threads(object):
 
                 # Step 2
                 creation_id = res.json()['id']
-                res = requests.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
+                res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
 
