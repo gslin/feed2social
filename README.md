@@ -28,8 +28,8 @@ threads_access_token = x
 threads_user_id = x
 twitter_access_token = x
 twitter_access_token_secret = x
-twitter_client_id = x
-twitter_client_secret = x
+twitter_api_key = x
+twitter_api_key_secret = x
 ```
 
 The `facebook_username` is used for generating the url `https://www.facebook.com/${facebook_username}`.

@@ -33,8 +33,8 @@ class Feed2Twitter(object):
     def get_auth(self):
         c = self.config
         return OAuth1Auth(
-            client_id=c['default']['twitter_client_id'],
-            client_secret=c['default']['twitter_client_secret'],
+            client_id=c['default']['twitter_api_key'],
+            client_secret=c['default']['twitter_api_key_secret'],
             token=c['default']['twitter_access_token'],
             token_secret=c['default']['twitter_access_token_secret'],
         )
