@@ -113,7 +113,7 @@ class Feed2Twitter(object):
 
                 # Post to Twitter.
                 res = httpx.post(
-                    'https://api.twitter.com/2/tweets',
+                    'https://api.x.com/2/tweets',
                     auth=auth,
                     json={'text': content},
                 )
@@ -129,7 +129,7 @@ class Feed2Twitter(object):
 
                 # Append feed entry url into replies.
                 res = httpx.post(
-                    'https://api.twitter.com/2/tweets',
+                    'https://api.x.com/2/tweets',
                     auth=auth,
                     json={
                         'text': f'Sync from: {url}',
