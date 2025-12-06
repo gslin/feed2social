@@ -171,7 +171,24 @@ class Feed2Twitter(object):
                 )
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
+
+                if res.status_code == 429:
+                    # Rate limit hit, display headers and exit
+                    print('* Rate limit exceeded (429). Response headers:')
+                    print('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
+                    print('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
+                    print('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
+                    rate_limit_reset = res.headers.get('x-rate-limit-reset')
+                    if rate_limit_reset:
+                        reset_time = int(rate_limit_reset)
+                        reset_datetime = datetime.datetime.fromtimestamp(reset_time)
+                        print('*   Reset time: {} (local time)'.format(reset_datetime))
+                    print('* Exiting due to rate limit.')
+                    s.close()
+                    exit(1)
+
                 if res.status_code != 201:
+                    print('* Error posting tweet: {}'.format(res.status_code))
                     continue
 
                 tweet_id = res.json()['data']['id']
@@ -180,16 +197,36 @@ class Feed2Twitter(object):
                 s.commit()
 
                 # Append feed entry url into replies.
+                reply_data = {
+                    'text': f'Sync from: {url}',
+                    'reply': {'in_reply_to_tweet_id': tweet_id},
+                }
+
                 res = httpx.post(
                     'https://api.x.com/2/tweets',
                     auth=auth,
-                    json={
-                        'text': f'Sync from: {url}',
-                        'reply': {'in_reply_to_tweet_id': tweet_id},
-                    },
+                    json=reply_data,
                 )
-                print('* res = {}'.format(res))
-                print('* res.text = {}'.format(res.text))
+                print('* Reply res = {}'.format(res))
+                print('* Reply res.text = {}'.format(res.text))
+
+                if res.status_code == 429:
+                    # Rate limit hit, display headers and exit
+                    print('* Reply rate limit exceeded (429). Response headers:')
+                    print('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
+                    print('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
+                    print('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
+                    rate_limit_reset = res.headers.get('x-rate-limit-reset')
+                    if rate_limit_reset:
+                        reset_time = int(rate_limit_reset)
+                        reset_datetime = datetime.datetime.fromtimestamp(reset_time)
+                        print('*   Reset time: {} (local time)'.format(reset_datetime))
+                    print('* Exiting due to rate limit.')
+                    s.close()
+                    exit(1)
+
+                if res.status_code != 201:
+                    print('* Error posting reply: {}'.format(res.status_code))
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='Sync feed to Twitter')
