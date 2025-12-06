@@ -5,6 +5,7 @@ import configparser
 import datetime
 import feedparser
 import html
+import httpx
 import os
 import re
 import sqlite3
@@ -107,20 +108,63 @@ class Feed2Bluesky(object):
                     s.commit()
                     continue
 
-                tb = client_utils.TextBuilder()
+                # Check if entry has media content (images)
+                image_url = None
+                image_data = None
+                if hasattr(item, 'media_content'):
+                    for media in item.media_content:
+                        # Check if it's an image
+                        if media.get('type', '').startswith('image/'):
+                            image_url = media.get('url')
+                            print('* Found image: {}'.format(image_url))
+                            break
 
-                # Handle links
-                http_pattern = re.compile(r'^https?://[^\s]+')
-                for w in re.split(r'(https?://[^\s]+)', content):
-                    if len(w) == 0:
-                        continue
+                # Download image if present
+                if image_url:
+                    try:
+                        print('* Downloading image: {}'.format(image_url))
+                        img_res = httpx.get(image_url, timeout=30.0)
+                        if img_res.status_code == 200:
+                            image_data = img_res.content
+                            print('* Image downloaded: {} bytes'.format(len(image_data)))
+                        else:
+                            print('* Failed to download image: {}'.format(img_res.status_code))
+                    except Exception as e:
+                        print('* Exception downloading image: {}'.format(e))
 
-                    if http_pattern.match(w):
-                        tb.link(w, w)
-                    else:
-                        tb.text(w)
+                # Post to Bluesky
+                if image_data:
+                    # Post with image using send_image
+                    tb = client_utils.TextBuilder()
 
-                post = self.client.send_post(tb)
+                    # Handle links
+                    http_pattern = re.compile(r'^https?://[^\s]+')
+                    for w in re.split(r'(https?://[^\s]+)', content):
+                        if len(w) == 0:
+                            continue
+
+                        if http_pattern.match(w):
+                            tb.link(w, w)
+                        else:
+                            tb.text(w)
+
+                    post = self.client.send_image(text=tb, image=image_data, image_alt='')
+                else:
+                    # Post text only
+                    tb = client_utils.TextBuilder()
+
+                    # Handle links
+                    http_pattern = re.compile(r'^https?://[^\s]+')
+                    for w in re.split(r'(https?://[^\s]+)', content):
+                        if len(w) == 0:
+                            continue
+
+                        if http_pattern.match(w):
+                            tb.link(w, w)
+                        else:
+                            tb.text(w)
+
+                    post = self.client.send_post(tb)
 
                 print('* type(post) = {}'.format(type(post)))
                 print('* post = {}'.format(post))
