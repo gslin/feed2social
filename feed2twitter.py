@@ -6,6 +6,7 @@ import datetime
 import feedparser
 import html
 import httpx
+import io
 import os
 import re
 import sqlite3
@@ -39,6 +40,37 @@ class Feed2Twitter(object):
             token_secret=c['default']['twitter_access_token_secret'],
             force_include_body=True,  # keep JSON payload so Twitter sees the text
         )
+
+    def upload_media(self, image_url, auth):
+        """Download image from URL and upload to Twitter v1.1 API"""
+        try:
+            # Download image
+            print('* Downloading image: {}'.format(image_url))
+            img_res = httpx.get(image_url, timeout=30.0)
+            if img_res.status_code != 200:
+                print('* Failed to download image: {}'.format(img_res.status_code))
+                return None
+
+            # Upload to Twitter v1.1 API
+            print('* Uploading image to Twitter v1.1 API')
+            upload_res = httpx.post(
+                'https://upload.twitter.com/1.1/media/upload.json',
+                auth=auth,
+                files={'media': io.BytesIO(img_res.content)},
+            )
+            print('* upload_res = {}'.format(upload_res))
+            print('* upload_res.text = {}'.format(upload_res.text))
+
+            if upload_res.status_code == 200:
+                media_id = upload_res.json()['media_id_string']
+                print('* media_id = {}'.format(media_id))
+                return media_id
+            else:
+                print('* Failed to upload image')
+                return None
+        except Exception as e:
+            print('* Exception during media upload: {}'.format(e))
+            return None
 
     def main(self, sync_only=False):
         print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
@@ -112,11 +144,30 @@ class Feed2Twitter(object):
                     s.commit()
                     continue
 
+                # Check if entry has media content (images)
+                image_url = None
+                if hasattr(item, 'media_content'):
+                    for media in item.media_content:
+                        # Check if it's an image
+                        if media.get('type', '').startswith('image/'):
+                            image_url = media.get('url')
+                            print('* Found image: {}'.format(image_url))
+                            break
+
+                # Upload media if present
+                media_id = None
+                if image_url:
+                    media_id = self.upload_media(image_url, auth)
+
                 # Post to Twitter.
+                tweet_data = {'text': content}
+                if media_id:
+                    tweet_data['media'] = {'media_ids': [media_id]}
+
                 res = httpx.post(
                     'https://api.x.com/2/tweets',
                     auth=auth,
-                    json={'text': content},
+                    json=tweet_data,
                 )
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
