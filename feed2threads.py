@@ -102,10 +102,31 @@ class Feed2Threads(object):
                     s.commit()
                     continue
 
+                # Check if entry has media content (images)
+                image_url = None
+                if hasattr(item, 'media_content'):
+                    for media in item.media_content:
+                        # Check if it's an image
+                        if media.get('type', '').startswith('image/'):
+                            image_url = media.get('url')
+                            print('* Found image: {}'.format(image_url))
+                            break
+
                 # Post to Threads.
                 #
                 # Step 1
-                res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
+                if image_url:
+                    # Post with image
+                    res = httpx.post('https://graph.threads.net/{}/threads'.format(threads_user_id), data={
+                        'media_type': 'IMAGE',
+                        'image_url': image_url,
+                        'text': content,
+                        'access_token': threads_access_token,
+                    })
+                else:
+                    # Post text only
+                    res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
+
                 print('* res = {}'.format(res))
                 print('* res.text = {}'.format(res.text))
                 if res.status_code != 200:
