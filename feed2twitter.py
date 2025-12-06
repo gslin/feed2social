@@ -158,6 +158,10 @@ class Feed2Twitter(object):
                 media_id = None
                 if image_url:
                     media_id = self.upload_media(image_url, auth)
+                    if media_id:
+                        # Wait after media upload to avoid rate limit
+                        print('* Waiting 2 seconds after media upload...')
+                        time.sleep(2)
 
                 # Post to Twitter.
                 tweet_data = {'text': content}
@@ -196,6 +200,10 @@ class Feed2Twitter(object):
                 cur.execute(sql_insert, (id_str, int(time.time())))
                 s.commit()
 
+                # Wait before posting reply to avoid rate limit
+                print('* Waiting 2 seconds before posting reply...')
+                time.sleep(2)
+
                 # Append feed entry url into replies.
                 reply_data = {
                     'text': f'Sync from: {url}',
@@ -227,6 +235,10 @@ class Feed2Twitter(object):
 
                 if res.status_code != 201:
                     print('* Error posting reply: {}'.format(res.status_code))
+
+                # Wait between processing feed items to avoid rate limit
+                print('* Waiting 3 seconds before next item...')
+                time.sleep(3)
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='Sync feed to Twitter')
