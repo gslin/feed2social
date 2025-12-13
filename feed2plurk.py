@@ -67,6 +67,11 @@ class Feed2Plurk(object):
             # Print out item's id.
             print('* item.id = {}'.format(item.id))
 
+            # Skip if text is empty.
+            if not text or not text.strip():
+                print('* Skipping: empty body')
+                continue
+
             # Craft "text".
             #
             # First to remove all tags except "a" and root's "div".

@@ -103,6 +103,11 @@ class Feed2Twitter(object):
             # Print out item's id.
             print('* item.id = {}'.format(item.id))
 
+            # Skip if body is empty.
+            if not body or not body.strip():
+                print('* Skipping: empty body')
+                continue
+
             # Craft "body".
             #
             # First to remove all tags except "a" and root's "div".
