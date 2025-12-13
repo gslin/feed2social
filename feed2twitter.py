@@ -103,34 +103,45 @@ class Feed2Twitter(object):
             # Print out item's id.
             print('* item.id = {}'.format(item.id))
 
-            # Skip if body is empty.
-            if not body or not body.strip():
-                print('* Skipping: empty body')
+            # Check if entry has media content (images)
+            image_url = None
+            if hasattr(item, 'media_content'):
+                for media in item.media_content:
+                    if media.get('type', '').startswith('image/'):
+                        image_url = media.get('url')
+                        break
+
+            # Skip if body is empty and no image.
+            if (not body or not body.strip()) and not image_url:
+                print('* Skipping: empty body and no image')
                 continue
 
             # Craft "body".
             #
             # First to remove all tags except "a" and root's "div".
-            body = cl.clean_html(body)
+            if body and body.strip():
+                body = cl.clean_html(body)
 
-            # Skip if there is '#notwitter' tag.
-            if '#notwitter' in body:
-                continue
+                # Skip if there is '#notwitter' tag.
+                if '#notwitter' in body:
+                    continue
 
-            # Remove root's "div".
-            body = body.replace('<div>', '').replace('</div>', '')
+                # Remove root's "div".
+                body = body.replace('<div>', '').replace('</div>', '')
 
-            # <p> and </p>
-            body = body.replace('<p>', '\n').replace('</p>', '\n')
+                # <p> and </p>
+                body = body.replace('<p>', '\n').replace('</p>', '\n')
 
-            # trim
-            body = body.strip()
+                # trim
+                body = body.strip()
 
-            # unescape
-            body = html.unescape(body)
+                # unescape
+                body = html.unescape(body)
 
-            # Limit to 280 chars.
-            body = body[0:280]
+                # Limit to 280 chars.
+                body = body[0:280]
+            else:
+                body = ''
 
             # Generate parameters.
             id_str = item['id']
@@ -148,16 +159,6 @@ class Feed2Twitter(object):
                     cur.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
-
-                # Check if entry has media content (images)
-                image_url = None
-                if hasattr(item, 'media_content'):
-                    for media in item.media_content:
-                        # Check if it's an image
-                        if media.get('type', '').startswith('image/'):
-                            image_url = media.get('url')
-                            print('* Found image: {}'.format(image_url))
-                            break
 
                 # Upload media if present
                 media_id = None
