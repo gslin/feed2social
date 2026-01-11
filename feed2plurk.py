@@ -5,6 +5,7 @@ import configparser
 import datetime
 import feedparser
 import html
+import httpx
 import os
 import plurk_oauth
 import re
@@ -67,34 +68,45 @@ class Feed2Plurk(object):
             # Print out item's id.
             print('* item.id = {}'.format(item.id))
 
-            # Skip if text is empty.
-            if not text or not text.strip():
-                print('* Skipping: empty body')
+            # Check if entry has media content (images)
+            image_url = None
+            if hasattr(item, 'media_content'):
+                for media in item.media_content:
+                    if media.get('type', '').startswith('image/'):
+                        image_url = media.get('url')
+                        break
+
+            # Skip if text is empty and no image.
+            if (not text or not text.strip()) and not image_url:
+                print('* Skipping: empty body and no image')
                 continue
 
             # Craft "text".
             #
             # First to remove all tags except "a" and root's "div".
-            text = cl.clean_html(text)
+            if text and text.strip():
+                text = cl.clean_html(text)
 
-            # Skip if there is '#noplurk' tag.
-            if '#noplurk' in text:
-                continue
+                # Skip if there is '#noplurk' tag.
+                if '#noplurk' in text:
+                    continue
 
-            # Remove root's "div".
-            text = text.replace('<div>', '').replace('</div>', '')
+                # Remove root's "div".
+                text = text.replace('<div>', '').replace('</div>', '')
 
-            # <p> and </p>
-            text = text.replace('<p>', '\n').replace('</p>', '\n')
+                # <p> and </p>
+                text = text.replace('<p>', '\n').replace('</p>', '\n')
 
-            # trim
-            text = text.strip()
+                # trim
+                text = text.strip()
 
-            # unescape
-            text = html.unescape(text)
+                # unescape
+                text = html.unescape(text)
 
-            # Limit to 360 unicode chars.
-            text = text[:360]
+                # Limit to 360 unicode chars.
+                text = text[:360]
+            else:
+                text = ''
 
             # Generate parameters.
             id_str = item['id']
@@ -112,6 +124,38 @@ class Feed2Plurk(object):
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
+
+                # Download and upload image if present
+                if image_url:
+                    try:
+                        print('* Downloading image: {}'.format(image_url))
+                        img_res = httpx.get(image_url, timeout=30.0)
+                        if img_res.status_code == 200:
+                            image_data = img_res.content
+                            print('* Image downloaded: {} bytes'.format(len(image_data)))
+
+                            # Upload image to Plurk
+                            print('* Uploading image to Plurk...')
+                            upload_res = self.client.callAPI('/APP/Timeline/uploadPicture', {
+                                'image': ('image.jpg', image_data),
+                            })
+                            print('* type(upload_res) = {}'.format(type(upload_res)))
+                            print('* upload_res = {}'.format(upload_res))
+
+                            if isinstance(upload_res, dict) and 'full' in upload_res:
+                                plurk_image_url = upload_res['full']
+                                print('* Plurk image URL: {}'.format(plurk_image_url))
+                                # Append image URL to content
+                                if content:
+                                    content = content + '\n' + plurk_image_url
+                                else:
+                                    content = plurk_image_url
+                            else:
+                                print('* Failed to upload image to Plurk')
+                        else:
+                            print('* Failed to download image: {}'.format(img_res.status_code))
+                    except Exception as e:
+                        print('* Exception handling image: {}'.format(e))
 
                 res = self.client.callAPI('/APP/Timeline/plurkAdd', {
                     'content': content,
