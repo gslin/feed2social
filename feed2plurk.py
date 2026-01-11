@@ -10,6 +10,7 @@ import os
 import plurk_oauth
 import re
 import sqlite3
+import tempfile
 import time
 
 from lxml.html.clean import Cleaner
@@ -134,24 +135,30 @@ class Feed2Plurk(object):
                             image_data = img_res.content
                             print('* Image downloaded: {} bytes'.format(len(image_data)))
 
-                            # Upload image to Plurk
-                            print('* Uploading image to Plurk...')
-                            upload_res = self.client.callAPI('/APP/Timeline/uploadPicture', {
-                                'image': ('image.jpg', image_data),
-                            })
-                            print('* type(upload_res) = {}'.format(type(upload_res)))
-                            print('* upload_res = {}'.format(upload_res))
+                            # Save image to temp file and upload to Plurk
+                            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                                tmp_file.write(image_data)
+                                tmp_path = tmp_file.name
 
-                            if isinstance(upload_res, dict) and 'full' in upload_res:
-                                plurk_image_url = upload_res['full']
-                                print('* Plurk image URL: {}'.format(plurk_image_url))
-                                # Append image URL to content
-                                if content:
-                                    content = content + '\n' + plurk_image_url
+                            try:
+                                print('* Uploading image to Plurk...')
+                                upload_res = self.client.callAPI('/APP/Timeline/uploadPicture', {}, fpath=tmp_path)
+                                print('* type(upload_res) = {}'.format(type(upload_res)))
+                                print('* upload_res = {}'.format(upload_res))
+
+                                if isinstance(upload_res, dict) and 'full' in upload_res:
+                                    plurk_image_url = upload_res['full']
+                                    print('* Plurk image URL: {}'.format(plurk_image_url))
+                                    # Append image URL to content
+                                    if content:
+                                        content = content + '\n' + plurk_image_url
+                                    else:
+                                        content = plurk_image_url
                                 else:
-                                    content = plurk_image_url
-                            else:
-                                print('* Failed to upload image to Plurk')
+                                    print('* Failed to upload image to Plurk')
+                            finally:
+                                # Clean up temp file
+                                os.unlink(tmp_path)
                         else:
                             print('* Failed to download image: {}'.format(img_res.status_code))
                     except Exception as e:
