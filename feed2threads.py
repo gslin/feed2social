@@ -152,6 +152,9 @@ class Feed2Threads(object):
 
                 creation_id = res.json()['id']
 
+                print('* Waiting 10 seconds for Threads API processing...')
+                time.sleep(10)
+
                 # Step 1.5: Poll status for image containers
                 if image_url:
                     print('* Polling container status for image...')
