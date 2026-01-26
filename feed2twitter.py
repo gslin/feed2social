@@ -7,6 +7,7 @@ import feedparser
 import html
 import httpx
 import io
+import json
 import os
 import re
 import sqlite3
@@ -59,7 +60,7 @@ class Feed2Twitter(object):
                 files={'media': io.BytesIO(img_res.content)},
             )
             print('* upload_res = {}'.format(upload_res))
-            print('* upload_res.text = {}'.format(upload_res.text))
+            print('* upload_res.text = {}'.format(json.dumps(upload_res.json(), ensure_ascii=False)))
 
             if upload_res.status_code == 200:
                 media_id = upload_res.json()['media_id_string']
@@ -180,7 +181,7 @@ class Feed2Twitter(object):
                     json=tweet_data,
                 )
                 print('* res = {}'.format(res))
-                print('* res.text = {}'.format(res.text))
+                print('* res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
                     # Rate limit hit, display headers and exit
@@ -222,7 +223,7 @@ class Feed2Twitter(object):
                     json=reply_data,
                 )
                 print('* Reply res = {}'.format(res))
-                print('* Reply res.text = {}'.format(res.text))
+                print('* Reply res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
                     # Rate limit hit, display headers and exit

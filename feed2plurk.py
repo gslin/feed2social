@@ -6,6 +6,7 @@ import datetime
 import feedparser
 import html
 import httpx
+import json
 import os
 import plurk_oauth
 import re
@@ -144,7 +145,7 @@ class Feed2Plurk(object):
                                 print('* Uploading image to Plurk...')
                                 upload_res = self.client.callAPI('/APP/Timeline/uploadPicture', {}, fpath=tmp_path)
                                 print('* type(upload_res) = {}'.format(type(upload_res)))
-                                print('* upload_res = {}'.format(upload_res))
+                                print('* upload_res = {}'.format(json.dumps(upload_res, ensure_ascii=False)))
 
                                 if isinstance(upload_res, dict) and 'full' in upload_res:
                                     plurk_image_url = upload_res['full']

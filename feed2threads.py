@@ -5,6 +5,7 @@ import configparser
 import datetime
 import feedparser
 import html
+import json
 import os
 import re
 import httpx
@@ -134,7 +135,7 @@ class Feed2Threads(object):
                     res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)))
 
                 print('* Step 1 - Create container: res = {}'.format(res))
-                print('* Step 1 - res.text = {}'.format(res.text))
+                print('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
                 if res.status_code != 200:
                     print('* Error creating container, skipping')
                     continue
@@ -154,7 +155,7 @@ class Feed2Threads(object):
                             creation_id, urllib.parse.quote_plus(threads_access_token)
                         ))
                         print('* Attempt {}/{}: status_res = {}'.format(attempt + 1, max_attempts, status_res))
-                        print('* status_res.text = {}'.format(status_res.text))
+                        print('* status_res.text = {}'.format(json.dumps(status_res.json(), ensure_ascii=False)))
 
                         if status_res.status_code == 200:
                             status = status_res.json().get('status', 'UNKNOWN')
@@ -172,7 +173,7 @@ class Feed2Threads(object):
                 # Step 2: Publish container
                 res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
                 print('* Step 2 - Publish: res = {}'.format(res))
-                print('* Step 2 - res.text = {}'.format(res.text))
+                print('* Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 200 and 'id' in res.json():
                     post_id = res.json()['id']
@@ -189,14 +190,14 @@ class Feed2Threads(object):
                         'access_token': threads_access_token,
                     })
                     print('* Reply Step 1 - Create container: res = {}'.format(res))
-                    print('* Reply Step 1 - res.text = {}'.format(res.text))
+                    print('* Reply Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                     if res.status_code == 200 and 'id' in res.json():
                         # Step 2: Publish reply
                         creation_id = res.json()['id']
                         res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)))
                         print('* Reply Step 2 - Publish: res = {}'.format(res))
-                        print('* Reply Step 2 - res.text = {}'.format(res.text))
+                        print('* Reply Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
                     else:
                         print('* Error creating reply container')
                 else:
