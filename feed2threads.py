@@ -119,103 +119,107 @@ class Feed2Threads(object):
                     s.commit()
                     continue
 
-                # Post to Threads.
-                #
-                # Step 1: Create media container
-                if image_url:
-                    # Post with image
-                    res = httpx.post('https://graph.threads.net/{}/threads'.format(threads_user_id), data={
-                        'media_type': 'IMAGE',
-                        'image_url': image_url,
-                        'text': content,
-                        'access_token': threads_access_token,
-                    }, timeout=60)
-                else:
-                    # Post text only
-                    res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)), timeout=60)
-
-                print('* Step 1 - Create container: res = {}'.format(res))
-                print('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
-                if res.status_code != 200:
-                    # Check for invalid link attachment error (OAuthException, code=-1, error_subcode=4279047)
-                    res_json = res.json()
-                    error = res_json.get('error', {})
-                    if (error.get('type') == 'OAuthException' and
-                        error.get('code') == -1 and
-                        error.get('error_subcode') == 4279047):
-                        print('* Invalid link attachment error, marking as processed and skipping')
-                        c.execute(sql_insert, (id_str, int(time.time())))
-                        s.commit()
-                        continue
-                    print('* Error creating container, skipping')
-                    continue
-
-                creation_id = res.json()['id']
-
-                print('* Waiting 10 seconds for Threads API processing...')
-                time.sleep(10)
-
-                # Step 1.5: Poll status for image containers
-                if image_url:
-                    print('* Polling container status for image...')
-                    max_attempts = 10
-                    poll_interval = 3  # seconds
-                    status = 'IN_PROGRESS'
-
-                    for attempt in range(max_attempts):
-                        time.sleep(poll_interval)
-                        status_res = httpx.get('https://graph.threads.net/v1.0/{}?fields=status&access_token={}'.format(
-                            creation_id, urllib.parse.quote_plus(threads_access_token)
-                        ), timeout=60)
-                        print('* Attempt {}/{}: status_res = {}'.format(attempt + 1, max_attempts, status_res))
-                        print('* status_res.text = {}'.format(json.dumps(status_res.json(), ensure_ascii=False)))
-
-                        if status_res.status_code == 200:
-                            status = status_res.json().get('status', 'UNKNOWN')
-                            print('* Container status: {}'.format(status))
-                            if status == 'FINISHED':
-                                break
-                            elif status == 'ERROR':
-                                print('* Container processing failed')
-                                break
-
-                    if status != 'FINISHED':
-                        print('* Container not ready after {} attempts, skipping'.format(max_attempts))
-                        continue
-
-                # Step 2: Publish container
-                res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
-                print('* Step 2 - Publish: res = {}'.format(res))
-                print('* Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
-
-                if res.status_code == 200 and 'id' in res.json():
-                    post_id = res.json()['id']
-                    c.execute(sql_insert, (id_str, int(time.time())))
-                    s.commit()
-
-                    # Append feed entry url into replies.
+                try:
+                    # Post to Threads.
                     #
-                    # Step 1: Create reply container
-                    res = httpx.post('https://graph.threads.net/v1.0/me/threads', data={
-                        'media_type': 'TEXT',
-                        'text': f'Sync from: {url}',
-                        'reply_to_id': post_id,
-                        'access_token': threads_access_token,
-                    }, timeout=60)
-                    print('* Reply Step 1 - Create container: res = {}'.format(res))
-                    print('* Reply Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                    # Step 1: Create media container
+                    if image_url:
+                        # Post with image
+                        res = httpx.post('https://graph.threads.net/{}/threads'.format(threads_user_id), data={
+                            'media_type': 'IMAGE',
+                            'image_url': image_url,
+                            'text': content,
+                            'access_token': threads_access_token,
+                        }, timeout=60)
+                    else:
+                        # Post text only
+                        res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)), timeout=60)
+
+                    print('* Step 1 - Create container: res = {}'.format(res))
+                    print('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                    if res.status_code != 200:
+                        # Check for invalid link attachment error (OAuthException, code=-1, error_subcode=4279047)
+                        res_json = res.json()
+                        error = res_json.get('error', {})
+                        if (error.get('type') == 'OAuthException' and
+                            error.get('code') == -1 and
+                            error.get('error_subcode') == 4279047):
+                            print('* Invalid link attachment error, marking as processed and skipping')
+                            c.execute(sql_insert, (id_str, int(time.time())))
+                            s.commit()
+                            continue
+                        print('* Error creating container, skipping')
+                        continue
+
+                    creation_id = res.json()['id']
+
+                    print('* Waiting 10 seconds for Threads API processing...')
+                    time.sleep(10)
+
+                    # Step 1.5: Poll status for image containers
+                    if image_url:
+                        print('* Polling container status for image...')
+                        max_attempts = 10
+                        poll_interval = 3  # seconds
+                        status = 'IN_PROGRESS'
+
+                        for attempt in range(max_attempts):
+                            time.sleep(poll_interval)
+                            status_res = httpx.get('https://graph.threads.net/v1.0/{}?fields=status&access_token={}'.format(
+                                creation_id, urllib.parse.quote_plus(threads_access_token)
+                            ), timeout=60)
+                            print('* Attempt {}/{}: status_res = {}'.format(attempt + 1, max_attempts, status_res))
+                            print('* status_res.text = {}'.format(json.dumps(status_res.json(), ensure_ascii=False)))
+
+                            if status_res.status_code == 200:
+                                status = status_res.json().get('status', 'UNKNOWN')
+                                print('* Container status: {}'.format(status))
+                                if status == 'FINISHED':
+                                    break
+                                elif status == 'ERROR':
+                                    print('* Container processing failed')
+                                    break
+
+                        if status != 'FINISHED':
+                            print('* Container not ready after {} attempts, skipping'.format(max_attempts))
+                            continue
+
+                    # Step 2: Publish container
+                    res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
+                    print('* Step 2 - Publish: res = {}'.format(res))
+                    print('* Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                     if res.status_code == 200 and 'id' in res.json():
-                        # Step 2: Publish reply
-                        creation_id = res.json()['id']
-                        res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
-                        print('* Reply Step 2 - Publish: res = {}'.format(res))
-                        print('* Reply Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                        post_id = res.json()['id']
+                        c.execute(sql_insert, (id_str, int(time.time())))
+                        s.commit()
+
+                        # Append feed entry url into replies.
+                        #
+                        # Step 1: Create reply container
+                        res = httpx.post('https://graph.threads.net/v1.0/me/threads', data={
+                            'media_type': 'TEXT',
+                            'text': f'Sync from: {url}',
+                            'reply_to_id': post_id,
+                            'access_token': threads_access_token,
+                        }, timeout=60)
+                        print('* Reply Step 1 - Create container: res = {}'.format(res))
+                        print('* Reply Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+
+                        if res.status_code == 200 and 'id' in res.json():
+                            # Step 2: Publish reply
+                            creation_id = res.json()['id']
+                            res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
+                            print('* Reply Step 2 - Publish: res = {}'.format(res))
+                            print('* Reply Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                        else:
+                            print('* Error creating reply container')
                     else:
-                        print('* Error creating reply container')
-                else:
-                    print('* Error publishing container')
-                    s.rollback()
+                        print('* Error publishing container')
+                        s.rollback()
+                except (httpx.TimeoutException, httpx.ConnectError) as e:
+                    print('* Network error ({}), skipping this item'.format(type(e).__name__))
+                    continue
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='Sync feed to Threads')
