@@ -137,6 +137,16 @@ class Feed2Threads(object):
                 print('* Step 1 - Create container: res = {}'.format(res))
                 print('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
                 if res.status_code != 200:
+                    # Check for invalid link attachment error (OAuthException, code=-1, error_subcode=4279047)
+                    res_json = res.json()
+                    error = res_json.get('error', {})
+                    if (error.get('type') == 'OAuthException' and
+                        error.get('code') == -1 and
+                        error.get('error_subcode') == 4279047):
+                        print('* Invalid link attachment error, marking as processed and skipping')
+                        c.execute(sql_insert, (id_str, int(time.time())))
+                        s.commit()
+                        continue
                     print('* Error creating container, skipping')
                     continue
 
