@@ -18,6 +18,10 @@ from lxml.html.clean import Cleaner
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 
+def tprint(*args, **kwargs):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
+    print(timestamp, *args, **kwargs)
+
 class Feed2Facebook(object):
     _config = None
     b = None
@@ -88,10 +92,10 @@ class Feed2Facebook(object):
         time.sleep(1)
 
     def main(self, sync_only=False):
-        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+        tprint('* Started.')
 
         if sync_only:
-            print('* sync_only mode: will not post to Facebook')
+            tprint('* sync_only mode: will not post to Facebook')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2facebook.sqlite3'.format(home)
@@ -117,7 +121,7 @@ class Feed2Facebook(object):
             text = item['description']
 
             # Print out item's id.
-            print('* item.id = {}'.format(item.id))
+            tprint('* item.id = {}'.format(item.id))
 
             # Craft "text".
             #
@@ -149,15 +153,15 @@ class Feed2Facebook(object):
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
                 content = '{}\n\n{}'.format(text, url)
-                print('* content = {}'.format(content))
+                tprint('* content = {}'.format(content))
 
                 if sync_only:
-                    print('* sync_only: skipping post to Facebook')
+                    tprint('* sync_only: skipping post to Facebook')
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
 
-                print(content)
+                tprint(content)
                 self.post(content)
 
                 c.execute(sql_insert, (id_str, int(time.time())))

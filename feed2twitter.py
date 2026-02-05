@@ -16,6 +16,10 @@ import time
 from authlib.integrations.httpx_client import OAuth1Auth
 from lxml.html.clean import Cleaner
 
+def tprint(*args, **kwargs):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
+    print(timestamp, *args, **kwargs)
+
 class Feed2Twitter(object):
     _config = None
 
@@ -46,38 +50,38 @@ class Feed2Twitter(object):
         """Download image from URL and upload to Twitter v1.1 API"""
         try:
             # Download image
-            print('* Downloading image: {}'.format(image_url))
+            tprint('* Downloading image: {}'.format(image_url))
             img_res = httpx.get(image_url, timeout=30.0)
             if img_res.status_code != 200:
-                print('* Failed to download image: {}'.format(img_res.status_code))
+                tprint('* Failed to download image: {}'.format(img_res.status_code))
                 return None
 
             # Upload to Twitter v1.1 API
-            print('* Uploading image to Twitter v1.1 API')
+            tprint('* Uploading image to Twitter v1.1 API')
             upload_res = httpx.post(
                 'https://upload.twitter.com/1.1/media/upload.json',
                 auth=auth,
                 files={'media': io.BytesIO(img_res.content)},
             )
-            print('* upload_res = {}'.format(upload_res))
-            print('* upload_res.text = {}'.format(json.dumps(upload_res.json(), ensure_ascii=False)))
+            tprint('* upload_res = {}'.format(upload_res))
+            tprint('* upload_res.text = {}'.format(json.dumps(upload_res.json(), ensure_ascii=False)))
 
             if upload_res.status_code == 200:
                 media_id = upload_res.json()['media_id_string']
-                print('* media_id = {}'.format(media_id))
+                tprint('* media_id = {}'.format(media_id))
                 return media_id
             else:
-                print('* Failed to upload image')
+                tprint('* Failed to upload image')
                 return None
         except Exception as e:
-            print('* Exception during media upload: {}'.format(e))
+            tprint('* Exception during media upload: {}'.format(e))
             return None
 
     def main(self, sync_only=False):
-        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+        tprint('* Started.')
 
         if sync_only:
-            print('* sync_only mode: will not post to Twitter')
+            tprint('* sync_only mode: will not post to Twitter')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2twitter.sqlite3'.format(home)
@@ -102,7 +106,7 @@ class Feed2Twitter(object):
             body = item['description']
 
             # Print out item's id.
-            print('* item.id = {}'.format(item.id))
+            tprint('* item.id = {}'.format(item.id))
 
             # Check if entry has media content (images)
             image_url = None
@@ -114,7 +118,7 @@ class Feed2Twitter(object):
 
             # Skip if body is empty and no image.
             if (not body or not body.strip()) and not image_url:
-                print('* Skipping: empty body and no image')
+                tprint('* Skipping: empty body and no image')
                 continue
 
             # Craft "body".
@@ -153,10 +157,10 @@ class Feed2Twitter(object):
             cur.execute(sql_select, (id_str, ))
             if 0 == cur.fetchone()[0]:
                 content = body
-                print('* content = {}'.format(content))
+                tprint('* content = {}'.format(content))
 
                 if sync_only:
-                    print('* sync_only: skipping post to Twitter')
+                    tprint('* sync_only: skipping post to Twitter')
                     cur.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
@@ -167,7 +171,7 @@ class Feed2Twitter(object):
                     media_id = self.upload_media(image_url, auth)
                     if media_id:
                         # Wait after media upload to avoid rate limit
-                        print('* Waiting 2 seconds after media upload...')
+                        tprint('* Waiting 2 seconds after media upload...')
                         time.sleep(2)
 
                 # Post to Twitter.
@@ -180,26 +184,26 @@ class Feed2Twitter(object):
                     auth=auth,
                     json=tweet_data,
                 )
-                print('* res = {}'.format(res))
-                print('* res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                tprint('* res = {}'.format(res))
+                tprint('* res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
                     # Rate limit hit, display headers and exit
-                    print('* Rate limit exceeded (429). Response headers:')
-                    print('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
-                    print('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
-                    print('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
+                    tprint('* Rate limit exceeded (429). Response headers:')
+                    tprint('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
+                    tprint('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
+                    tprint('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
                     rate_limit_reset = res.headers.get('x-rate-limit-reset')
                     if rate_limit_reset:
                         reset_time = int(rate_limit_reset)
                         reset_datetime = datetime.datetime.fromtimestamp(reset_time)
-                        print('*   Reset time: {} (local time)'.format(reset_datetime))
-                    print('* Exiting due to rate limit.')
+                        tprint('*   Reset time: {} (local time)'.format(reset_datetime))
+                    tprint('* Exiting due to rate limit.')
                     s.close()
                     exit(1)
 
                 if res.status_code != 201:
-                    print('* Error posting tweet: {}'.format(res.status_code))
+                    tprint('* Error posting tweet: {}'.format(res.status_code))
                     continue
 
                 tweet_id = res.json()['data']['id']
@@ -208,7 +212,7 @@ class Feed2Twitter(object):
                 s.commit()
 
                 # Wait before posting reply to avoid rate limit
-                print('* Waiting 2 seconds before posting reply...')
+                tprint('* Waiting 2 seconds before posting reply...')
                 time.sleep(2)
 
                 # Append feed entry url into replies.
@@ -222,29 +226,29 @@ class Feed2Twitter(object):
                     auth=auth,
                     json=reply_data,
                 )
-                print('* Reply res = {}'.format(res))
-                print('* Reply res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                tprint('* Reply res = {}'.format(res))
+                tprint('* Reply res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
                     # Rate limit hit, display headers and exit
-                    print('* Reply rate limit exceeded (429). Response headers:')
-                    print('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
-                    print('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
-                    print('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
+                    tprint('* Reply rate limit exceeded (429). Response headers:')
+                    tprint('*   x-rate-limit-limit: {}'.format(res.headers.get('x-rate-limit-limit', 'N/A')))
+                    tprint('*   x-rate-limit-remaining: {}'.format(res.headers.get('x-rate-limit-remaining', 'N/A')))
+                    tprint('*   x-rate-limit-reset: {}'.format(res.headers.get('x-rate-limit-reset', 'N/A')))
                     rate_limit_reset = res.headers.get('x-rate-limit-reset')
                     if rate_limit_reset:
                         reset_time = int(rate_limit_reset)
                         reset_datetime = datetime.datetime.fromtimestamp(reset_time)
-                        print('*   Reset time: {} (local time)'.format(reset_datetime))
-                    print('* Exiting due to rate limit.')
+                        tprint('*   Reset time: {} (local time)'.format(reset_datetime))
+                    tprint('* Exiting due to rate limit.')
                     s.close()
                     exit(1)
 
                 if res.status_code != 201:
-                    print('* Error posting reply: {}'.format(res.status_code))
+                    tprint('* Error posting reply: {}'.format(res.status_code))
 
                 # Wait between processing feed items to avoid rate limit
-                print('* Waiting 3 seconds before next item...')
+                tprint('* Waiting 3 seconds before next item...')
                 time.sleep(3)
 
 if '__main__' == __name__:

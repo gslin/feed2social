@@ -5,8 +5,12 @@ import datetime
 import os
 import httpx
 
+def tprint(*args, **kwargs):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
+    print(timestamp, *args, **kwargs)
+
 def main():
-    print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+    tprint('* Started.')
 
     home = os.environ['HOME']
     f_conf = '{}/.config/feed2social/config.ini'.format(home)
@@ -21,18 +25,18 @@ def main():
         'grant_type': 'th_refresh_token',
         'access_token': access_token,
     })
-    print('* res = {}'.format(res))
-    print('* res.text = {}'.format(res.text))
+    tprint('* res = {}'.format(res))
+    tprint('* res.text = {}'.format(res.text))
 
     if res.status_code != 200:
-        print('* Failed to refresh access token.')
+        tprint('* Failed to refresh access token.')
         return
 
     new_access_token = res.json()['access_token']
     expires_in = res.json()['expires_in']
 
-    print('* new_access_token = {}'.format(new_access_token))
-    print('* expires_in = {} seconds ({} days)'.format(expires_in, expires_in // 86400))
+    tprint('* new_access_token = {}'.format(new_access_token))
+    tprint('* expires_in = {} seconds ({} days)'.format(expires_in, expires_in // 86400))
 
     # Update the config file.
     config['default']['threads_access_token'] = new_access_token
@@ -40,7 +44,7 @@ def main():
     with open(f_conf, 'w') as f:
         config.write(f)
 
-    print('* Config file updated.')
+    tprint('* Config file updated.')
 
 if '__main__' == __name__:
     main()

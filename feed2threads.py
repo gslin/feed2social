@@ -15,6 +15,10 @@ import urllib
 
 from lxml.html.clean import Cleaner
 
+def tprint(*args, **kwargs):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
+    print(timestamp, *args, **kwargs)
+
 class Feed2Threads(object):
     _config = None
 
@@ -32,10 +36,10 @@ class Feed2Threads(object):
         return self._config
 
     def main(self, sync_only=False):
-        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+        tprint('* Started.')
 
         if sync_only:
-            print('* sync_only mode: will not post to Threads')
+            tprint('* sync_only mode: will not post to Threads')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2threads.sqlite3'.format(home)
@@ -60,7 +64,7 @@ class Feed2Threads(object):
             body = item['description']
 
             # Print out item's id.
-            print('* item.id = {}'.format(item.id))
+            tprint('* item.id = {}'.format(item.id))
 
             # Check if entry has media content (images)
             image_url = None
@@ -72,7 +76,7 @@ class Feed2Threads(object):
 
             # Skip if body is empty and no image.
             if (not body or not body.strip()) and not image_url:
-                print('* Skipping: empty body and no image')
+                tprint('* Skipping: empty body and no image')
                 continue
 
             # Craft "body".
@@ -111,10 +115,10 @@ class Feed2Threads(object):
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
                 content = body
-                print('* content = {}'.format(content))
+                tprint('* content = {}'.format(content))
 
                 if sync_only:
-                    print('* sync_only: skipping post to Threads')
+                    tprint('* sync_only: skipping post to Threads')
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
@@ -135,8 +139,8 @@ class Feed2Threads(object):
                         # Post text only
                         res = httpx.post('https://graph.threads.net/{}/threads?text={}&access_token={}&media_type=TEXT'.format(threads_user_id, urllib.parse.quote_plus(content), urllib.parse.quote_plus(threads_access_token)), timeout=60)
 
-                    print('* Step 1 - Create container: res = {}'.format(res))
-                    print('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                    tprint('* Step 1 - Create container: res = {}'.format(res))
+                    tprint('* Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
                     if res.status_code != 200:
                         # Check for invalid link attachment error (OAuthException, code=-1, error_subcode=4279047)
                         res_json = res.json()
@@ -144,21 +148,21 @@ class Feed2Threads(object):
                         if (error.get('type') == 'OAuthException' and
                             error.get('code') == -1 and
                             error.get('error_subcode') == 4279047):
-                            print('* Invalid link attachment error, marking as processed and skipping')
+                            tprint('* Invalid link attachment error, marking as processed and skipping')
                             c.execute(sql_insert, (id_str, int(time.time())))
                             s.commit()
                             continue
-                        print('* Error creating container, skipping')
+                        tprint('* Error creating container, skipping')
                         continue
 
                     creation_id = res.json()['id']
 
-                    print('* Waiting 10 seconds for Threads API processing...')
+                    tprint('* Waiting 10 seconds for Threads API processing...')
                     time.sleep(10)
 
                     # Step 1.5: Poll status for image containers
                     if image_url:
-                        print('* Polling container status for image...')
+                        tprint('* Polling container status for image...')
                         max_attempts = 10
                         poll_interval = 3  # seconds
                         status = 'IN_PROGRESS'
@@ -168,26 +172,26 @@ class Feed2Threads(object):
                             status_res = httpx.get('https://graph.threads.net/v1.0/{}?fields=status&access_token={}'.format(
                                 creation_id, urllib.parse.quote_plus(threads_access_token)
                             ), timeout=60)
-                            print('* Attempt {}/{}: status_res = {}'.format(attempt + 1, max_attempts, status_res))
-                            print('* status_res.text = {}'.format(json.dumps(status_res.json(), ensure_ascii=False)))
+                            tprint('* Attempt {}/{}: status_res = {}'.format(attempt + 1, max_attempts, status_res))
+                            tprint('* status_res.text = {}'.format(json.dumps(status_res.json(), ensure_ascii=False)))
 
                             if status_res.status_code == 200:
                                 status = status_res.json().get('status', 'UNKNOWN')
-                                print('* Container status: {}'.format(status))
+                                tprint('* Container status: {}'.format(status))
                                 if status == 'FINISHED':
                                     break
                                 elif status == 'ERROR':
-                                    print('* Container processing failed')
+                                    tprint('* Container processing failed')
                                     break
 
                         if status != 'FINISHED':
-                            print('* Container not ready after {} attempts, skipping'.format(max_attempts))
+                            tprint('* Container not ready after {} attempts, skipping'.format(max_attempts))
                             continue
 
                     # Step 2: Publish container
                     res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
-                    print('* Step 2 - Publish: res = {}'.format(res))
-                    print('* Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                    tprint('* Step 2 - Publish: res = {}'.format(res))
+                    tprint('* Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                     if res.status_code == 200 and 'id' in res.json():
                         post_id = res.json()['id']
@@ -203,22 +207,22 @@ class Feed2Threads(object):
                             'reply_to_id': post_id,
                             'access_token': threads_access_token,
                         }, timeout=60)
-                        print('* Reply Step 1 - Create container: res = {}'.format(res))
-                        print('* Reply Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                        tprint('* Reply Step 1 - Create container: res = {}'.format(res))
+                        tprint('* Reply Step 1 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                         if res.status_code == 200 and 'id' in res.json():
                             # Step 2: Publish reply
                             creation_id = res.json()['id']
                             res = httpx.post('https://graph.threads.net/{}/threads_publish?creation_id={}&access_token={}'.format(threads_user_id, urllib.parse.quote_plus(creation_id), urllib.parse.quote_plus(threads_access_token)), timeout=60)
-                            print('* Reply Step 2 - Publish: res = {}'.format(res))
-                            print('* Reply Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
+                            tprint('* Reply Step 2 - Publish: res = {}'.format(res))
+                            tprint('* Reply Step 2 - res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
                         else:
-                            print('* Error creating reply container')
+                            tprint('* Error creating reply container')
                     else:
-                        print('* Error publishing container')
+                        tprint('* Error publishing container')
                         s.rollback()
                 except (httpx.TimeoutException, httpx.ConnectError) as e:
-                    print('* Network error ({}), skipping this item'.format(type(e).__name__))
+                    tprint('* Network error ({}), skipping this item'.format(type(e).__name__))
                     continue
 
 if '__main__' == __name__:

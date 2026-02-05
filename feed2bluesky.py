@@ -14,6 +14,10 @@ import time
 from atproto import Client, client_utils, models
 from lxml.html.clean import Cleaner
 
+def tprint(*args, **kwargs):
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
+    print(timestamp, *args, **kwargs)
+
 class Feed2Bluesky(object):
     _client = None
     _config = None
@@ -41,10 +45,10 @@ class Feed2Bluesky(object):
         return self._config
 
     def main(self, sync_only=False):
-        print('* datetime.datetime.now() = {}'.format(datetime.datetime.now()))
+        tprint('* Started.')
 
         if sync_only:
-            print('* sync_only mode: will not post to Bluesky')
+            tprint('* sync_only mode: will not post to Bluesky')
 
         home = os.environ['HOME']
         f_db = '{}/.config/feed2social/feed2bluesky.sqlite3'.format(home)
@@ -65,7 +69,7 @@ class Feed2Bluesky(object):
             body = item['description']
 
             # Print out item's id.
-            print('* item.id = {}'.format(item.id))
+            tprint('* item.id = {}'.format(item.id))
 
             # Check if entry has media content (images)
             image_url = None
@@ -77,7 +81,7 @@ class Feed2Bluesky(object):
 
             # Skip if body is empty and no image.
             if (not body or not body.strip()) and not image_url:
-                print('* Skipping: empty body and no image')
+                tprint('* Skipping: empty body and no image')
                 continue
 
             # Craft "body".
@@ -116,10 +120,10 @@ class Feed2Bluesky(object):
             c.execute(sql_select, (id_str, ))
             if 0 == c.fetchone()[0]:
                 content = body
-                print('* content = {}'.format(content))
+                tprint('* content = {}'.format(content))
 
                 if sync_only:
-                    print('* sync_only: skipping post to Bluesky')
+                    tprint('* sync_only: skipping post to Bluesky')
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
                     continue
@@ -128,15 +132,15 @@ class Feed2Bluesky(object):
                 image_data = None
                 if image_url:
                     try:
-                        print('* Downloading image: {}'.format(image_url))
+                        tprint('* Downloading image: {}'.format(image_url))
                         img_res = httpx.get(image_url, timeout=30.0)
                         if img_res.status_code == 200:
                             image_data = img_res.content
-                            print('* Image downloaded: {} bytes'.format(len(image_data)))
+                            tprint('* Image downloaded: {} bytes'.format(len(image_data)))
                         else:
-                            print('* Failed to download image: {}'.format(img_res.status_code))
+                            tprint('* Failed to download image: {}'.format(img_res.status_code))
                     except Exception as e:
-                        print('* Exception downloading image: {}'.format(e))
+                        tprint('* Exception downloading image: {}'.format(e))
 
                 # Post to Bluesky
                 if image_data:
@@ -172,8 +176,8 @@ class Feed2Bluesky(object):
 
                     post = self.client.send_post(tb)
 
-                print('* type(post) = {}'.format(type(post)))
-                print('* post = {}'.format(post))
+                tprint('* type(post) = {}'.format(type(post)))
+                tprint('* post = {}'.format(post))
                 if isinstance(post, object) and post.cid:
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
@@ -186,8 +190,8 @@ class Feed2Bluesky(object):
 
                 post_ref = models.create_strong_ref(post)
                 reply = self.client.send_post(tb2, reply_to=models.AppBskyFeedPost.ReplyRef(parent=post_ref, root=post_ref))
-                print('* type(reply) = {}'.format(type(reply)))
-                print('* reply = {}'.format(reply))
+                tprint('* type(reply) = {}'.format(type(reply)))
+                tprint('* reply = {}'.format(reply))
 
 if '__main__' == __name__:
     parser = argparse.ArgumentParser(description='Sync feed to Bluesky')
