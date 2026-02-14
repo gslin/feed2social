@@ -11,12 +11,95 @@ import re
 import sqlite3
 import time
 
+import lxml.html
+
 from atproto import Client, client_utils, models
 from lxml.html.clean import Cleaner
 
 def tprint(*args, **kwargs):
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
     print(timestamp, *args, **kwargs)
+
+
+def fetch_og_metadata(url):
+    """Fetch Open Graph metadata from a URL.
+    Returns dict with keys: title, description, image_url (any can be None).
+    """
+    try:
+        res = httpx.get(url, timeout=15.0, follow_redirects=True)
+        res.raise_for_status()
+        doc = lxml.html.fromstring(res.text)
+
+        og_title = None
+        og_description = None
+        og_image = None
+
+        el = doc.xpath('//meta[@property="og:title"]/@content')
+        if el:
+            og_title = el[0]
+
+        el = doc.xpath('//meta[@property="og:description"]/@content')
+        if el:
+            og_description = el[0]
+
+        el = doc.xpath('//meta[@property="og:image"]/@content')
+        if el:
+            og_image = el[0]
+
+        # Fallback to <title> and <meta name="description">
+        if not og_title:
+            el = doc.xpath('//title/text()')
+            if el:
+                og_title = el[0]
+
+        if not og_description:
+            el = doc.xpath('//meta[@name="description"]/@content')
+            if el:
+                og_description = el[0]
+
+        return {
+            'title': og_title,
+            'description': og_description,
+            'image_url': og_image,
+        }
+    except Exception as e:
+        tprint('* Exception fetching OG metadata: {}'.format(e))
+        return {}
+
+
+def create_external_embed(client, url, og_data, feed_title):
+    """Create an AppBskyEmbedExternal embed for the link card.
+    Returns embed object, or None if creation fails.
+    """
+    try:
+        title = og_data.get('title') or feed_title or url
+        description = og_data.get('description') or ''
+
+        thumb = None
+        image_url = og_data.get('image_url')
+        if image_url:
+            try:
+                tprint('* Downloading OG image: {}'.format(image_url))
+                img_res = httpx.get(image_url, timeout=15.0, follow_redirects=True)
+                img_res.raise_for_status()
+                upload = client.upload_blob(img_res.content)
+                thumb = upload.blob
+                tprint('* OG image uploaded: {} bytes'.format(len(img_res.content)))
+            except Exception as e:
+                tprint('* Exception downloading/uploading OG image: {}'.format(e))
+
+        embed = models.AppBskyEmbedExternal.Main(
+            external=models.AppBskyEmbedExternal.External(
+                title=title,
+                description=description,
+                uri=url,
+                thumb=thumb,
+            )
+        )
+        return embed
+    except Exception as e:
+        tprint('* Exception creating external embed: {}'.format(e))
+        return None
 
 class Feed2Bluesky(object):
     _client = None
@@ -160,7 +243,7 @@ class Feed2Bluesky(object):
 
                     post = self.client.send_image(text=tb, image=image_data, image_alt='')
                 else:
-                    # Post text only
+                    # Post text only with link card embed
                     tb = client_utils.TextBuilder()
 
                     # Handle links
@@ -174,7 +257,12 @@ class Feed2Bluesky(object):
                         else:
                             tb.text(w)
 
-                    post = self.client.send_post(tb)
+                    # Fetch OG metadata and create link card embed
+                    og_data = fetch_og_metadata(url)
+                    feed_title = html.unescape(item.get('title', ''))
+                    embed = create_external_embed(self.client, url, og_data, feed_title)
+
+                    post = self.client.send_post(tb, embed=embed)
 
                 tprint('* type(post) = {}'.format(type(post)))
                 tprint('* post = {}'.format(post))
