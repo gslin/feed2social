@@ -18,7 +18,8 @@ The `~/.config/feed2social/config.ini` file:
 [default]
 bluesky_username = username.bsky.social
 bluesky_password = x
-facebook_cookies_file = ~/.config/feed2social/facebook-cookies.json
+facebook_c_user = x
+facebook_xs = x
 facebook_privacy = EVERYONE
 feed_url = https://abpe.org/@gslin.rss
 plurk_app_key = x
@@ -40,17 +41,30 @@ Selenium, Firefox, and geckodriver are no longer needed. The upstream package
 depends on Playwright, but this integration does not launch it or require a
 Playwright browser download.
 
-Log in to `https://www.facebook.com/` in a browser and export that site's cookies
+Log in to `https://www.facebook.com/` in a browser, then find the site's cookies
+in the developer tools. Copy `c_user` into `facebook_c_user` and `xs` into
+`facebook_xs` under `[default]` in `config.ini`. Paste the values exactly as shown,
+without quotes or URL decoding; `%` characters do not need escaping.
+Other cookies can be supplied with the same `facebook_` prefix, including
+`facebook_datr`, `facebook_sb`, `facebook_fr`, and `facebook_i_user`.
+
+When any supported `facebook_<cookie>` setting is present, cookies come only
+from `config.ini`; both `facebook_c_user` and `facebook_xs` must be nonempty.
+The script does not merge them with a cookie file or fall back to that file when
+the INI credentials are incomplete.
+
+Alternatively, omit all `facebook_<cookie>` settings and export the site's cookies
 as a JSON array (for example, Cookie-Editor's JSON export). Save the file as
 `~/.config/feed2social/facebook-cookies.json`, or set `facebook_cookies_file` to
 another path. Each cookie needs `name`, `value`, and `domain` fields. The export
 must include `c_user` and `xs`; keeping the other Facebook cookies is recommended.
-Keep the file private (`chmod 600`), outside the repository, and refresh it from
-the browser when the session expires. The script does not log in with a password.
+Keep whichever file contains the cookies private (`chmod 600`), outside the
+repository, and refresh its values from the browser when the session expires.
+The script does not log in with a password.
 
-Posts use the identity in the exported cookies: `c_user` for a personal account,
-or `i_user` when exported after switching to a Page. Check the selected identity
-before exporting. The old `facebook_username` setting is unused and can be removed.
+Posts use the identity in the cookies: `c_user` for a personal account, or `i_user`
+when copied after switching to a Page. Check the selected identity before copying
+cookies. The old `facebook_username` setting is unused and can be removed.
 `facebook_privacy` accepts `EVERYONE` (public, the default), `FRIENDS`, or `SELF`
 (only me). Each post contains the feed text followed by its source URL.
 

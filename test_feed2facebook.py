@@ -142,10 +142,66 @@ class Feed2FacebookTests(unittest.TestCase):
 
     def test_sync_only_needs_no_cookies_and_never_contacts_facebook(self):
         self.items.insert(0, self.entry(entry_id='entry-2'))
+        self.app._config['default']['facebook_c_user'] = 'incomplete-config'
         self.cookie_file.unlink()
         self.app.main(sync_only=True)
         self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
         self.http.assert_not_called()
+
+    def test_ini_cookies_preserve_percent_escapes_and_take_precedence_over_file(self):
+        config_file = self.cookie_file.parent / 'config.ini'
+        config_file.write_text(
+            '[default]\nfeed_url = https://example.com/feed\n'
+            'facebook_c_user = 300003\n'
+            'facebook_xs = 23%3Aprivate-session%3A2%3A12345\n',
+            encoding='utf-8',
+        )
+        self.app._config = None
+        self.cookie_file.write_text('invalid JSON', encoding='utf-8')
+
+        self.app.main()
+
+        session = self.http.call_args.args[0]
+        self.assertEqual(session.cookies['c_user'], '300003')
+        self.assertEqual(session.cookies['xs'], '23%3Aprivate-session%3A2%3A12345')
+        self.assertEqual(self.posted_form()['av'], '300003')
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+
+    def test_ini_supports_page_identity_and_optional_cookies_without_file(self):
+        self.app._config['default'].update(
+            facebook_c_user='300003', facebook_xs='ini-session', facebook_i_user='400004',
+            facebook_datr='device-cookie', facebook_sb='browser-cookie', facebook_fr='fr-cookie',
+            facebook_presence='',
+        )
+        self.cookie_file.unlink()
+
+        self.app.main()
+
+        session = self.http.call_args.args[0]
+        self.assertEqual(session.cookies['c_user'], '300003')
+        self.assertEqual(session.cookies['i_user'], '400004')
+        self.assertEqual(session.cookies['datr'], 'device-cookie')
+        self.assertEqual(session.cookies['sb'], 'browser-cookie')
+        self.assertEqual(session.cookies['fr'], 'fr-cookie')
+        self.assertNotIn('presence', session.cookies)
+        self.assertEqual(self.posted_form()['av'], '400004')
+
+    def test_incomplete_ini_cookies_do_not_fall_back_to_valid_cookie_file(self):
+        for settings in (
+            {'facebook_c_user': '300003'},
+            {'facebook_xs': 'ini-session'},
+            {'facebook_i_user': '400004'},
+            {'facebook_c_user': '', 'facebook_xs': ''},
+            {'facebook_c_user': '300003', 'facebook_xs': '   '},
+        ):
+            with self.subTest(settings=settings):
+                self.app._config['default'].update(settings)
+                with self.assertRaisesRegex(configparser.Error, 'facebook_c_user and facebook_xs'):
+                    self.app.main()
+                for key in settings:
+                    del self.app._config['default'][key]
+        self.http.assert_not_called()
+        self.assertEqual(self.recorded_ids(), [])
 
     def test_excluded_and_processed_entries_need_no_cookies(self):
         self.app.main(sync_only=True)

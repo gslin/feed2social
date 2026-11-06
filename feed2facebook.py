@@ -38,7 +38,21 @@ class Feed2Facebook(object):
         return self._config
 
     def load_cookies(self):
-        path = os.path.expanduser(self.config['default'].get(
+        config = self.config['default']
+        # Cookie values can contain percent escapes; do not interpolate them.
+        cookies = {
+            name: config.get('facebook_' + name, raw=True).strip()
+            for name in COOKIE_KEYS if 'facebook_' + name in config
+        }
+        if cookies:
+            if not cookies.get('c_user') or not cookies.get('xs'):
+                raise configparser.Error(
+                    'Set both facebook_c_user and facebook_xs in config.ini '
+                    'when providing Facebook cookies there.'
+                )
+            return {name: value for name, value in cookies.items() if value}
+
+        path = os.path.expanduser(config.get(
             'facebook_cookies_file', '~/.config/feed2social/facebook-cookies.json',
         ))
         try:
@@ -46,8 +60,9 @@ class Feed2Facebook(object):
                 exported = json.load(f)
         except (OSError, ValueError):
             raise configparser.Error(
-                'Cannot read facebook_cookies_file. Export Facebook cookies as JSON '
-                'to ~/.config/feed2social/facebook-cookies.json or configure its path.'
+                'Set facebook_c_user and facebook_xs in config.ini, or export Facebook '
+                'cookies as JSON to ~/.config/feed2social/facebook-cookies.json '
+                '(overridable with facebook_cookies_file). Cannot read the cookie file.'
             ) from None
 
         if not isinstance(exported, list):
