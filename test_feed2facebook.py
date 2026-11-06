@@ -250,6 +250,103 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(self.recorded_ids(), [])
         self.assertTrue(self.http.call_args.args[0]._closed)
 
+    def test_login_failure_reports_metadata_without_secrets_or_doc_id_advice(self):
+        for status in (200, 302):
+            with self.subTest(status=status):
+                response = self.response('<html>private-page-content</html>', status)
+                response.headers['Content-Type'] = 'text/html; charset=utf-8'
+                response.headers['Set-Cookie'] = 'xs=private-response-cookie'
+                if status == 302:
+                    response.headers['Location'] = '/login/?next=private-redirect-value'
+                self.http.reset_mock()
+                self.http.side_effect = [response]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaises(RuntimeError) as raised:
+                        self.app.main()
+                log = output.getvalue()
+                self.assertIn(f'HTTP {status}, content-type="text/html"', log)
+                self.assertIn(f'redirect={status == 302}', log)
+                self.assertIn('"DTSGInitData": false', log)
+                self.assertIn('fb_dtsg extracted = False', log)
+                message = str(raised.exception)
+                self.assertIn('--check-login', message)
+                self.assertIn('No post was sent', message)
+                self.assertNotIn('facebook_post_doc_id', message)
+                for secret in ('private-page-content', 'private-response-cookie',
+                               'private-redirect-value', 'private-session'):
+                    self.assertNotIn(secret, log + message)
+                self.assertEqual(self.http.call_count, 1)
+                self.assertEqual(self.recorded_ids(), [])
+                self.assertTrue(self.http.call_args.args[0]._closed)
+
+    def test_unrecognized_token_markup_reports_marker_without_guessing_a_token(self):
+        self.http.side_effect = [self.response(
+            '<html>"DTSGInitData", [], {"token":"private-csrf"}</html>',
+        )]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
+                self.app.main(debug=True)
+        self.assertIn('"DTSGInitData": true', output.getvalue())
+        self.assertIn('fb_dtsg extracted = False', output.getvalue())
+        self.assertNotIn('private-csrf', output.getvalue())
+        self.assertEqual(self.http.call_count, 1)
+        self.assertEqual(self.recorded_ids(), [])
+
+    def test_login_http_error_and_timeout_report_diagnostics_without_posting(self):
+        for response in (self.response('private-error-page', 503), RequestsError('Timed out')):
+            with self.subTest(response=response):
+                self.http.reset_mock()
+                self.http.side_effect = [response]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaises(RequestsError):
+                        self.app.main()
+                expected = 'HTTP 503' if isinstance(response, Response) else 'no HTTP response received'
+                self.assertIn(expected, output.getvalue())
+                self.assertNotIn('private-error-page', output.getvalue())
+                self.assertEqual(self.http.call_count, 1)
+                self.assertEqual(self.recorded_ids(), [])
+                self.assertTrue(self.http.call_args.args[0]._closed)
+
+    def test_check_login_only_fetches_tokens_without_feed_database_or_post_settings(self):
+        self.db_path.unlink()
+        del self.app._config['default']['feed_url']
+        self.app._config['default'].update(
+            facebook_privacy='INVALID', facebook_post_doc_id='INVALID',
+        )
+        self.http.side_effect = [self.homepage()]
+        output = io.StringIO()
+        with (patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output),
+              patch('feed2facebook.feedparser.parse') as parse,
+              patch('feed2facebook.sqlite3.connect') as connect):
+            self.app.main(check_login=True)
+        parse.assert_not_called()
+        connect.assert_not_called()
+        self.assertFalse(self.db_path.exists())
+        self.assertEqual(self.http.call_count, 1)
+        self.assertEqual(self.http.call_args.args[1], 'https://www.facebook.com/')
+        self.assertNotIn('data', self.http.call_args.kwargs)
+        self.assertTrue(self.http.call_args.args[0]._closed)
+        log = output.getvalue()
+        self.assertIn('fb_dtsg extracted = True', log)
+        self.assertIn('login-token check passed; posting was not tested', log)
+        for secret in ('private-session', 'private-csrf', 'private-lsd'):
+            self.assertNotIn(secret, log)
+
+    def test_failed_check_login_does_not_touch_feed_or_database(self):
+        self.http.side_effect = [self.response('<html>Log in</html>')]
+        with (patch('feed2facebook.feedparser.parse') as parse,
+              patch('feed2facebook.sqlite3.connect') as connect):
+            with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
+                self.app.main(check_login=True)
+        parse.assert_not_called()
+        connect.assert_not_called()
+        self.assertEqual(self.http.call_count, 1)
+        self.assertEqual(self.recorded_ids(), [])
+        self.assertTrue(self.http.call_args.args[0]._closed)
+
     def test_http_failures_do_not_leak_responses_record_entries_or_retry(self):
         self.items.insert(0, self.entry(entry_id='entry-2'))
         for status in (302, 401, 403, 429, 500):

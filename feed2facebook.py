@@ -36,6 +36,22 @@ def response_shape(value):
         return value
     return '<{}>'.format(type(value).__name__)
 
+def debug_login_response(response, tokens):
+    if response is None:
+        tprint('* Facebook login: no HTTP response received for the homepage GET')
+        return
+    content_type = response.headers.get('Content-Type', '').split(';', 1)[0]
+    tprint('* Facebook login: HTTP {}, content-type={}, body_bytes={}, redirect={}'.format(
+        response.status_code, json.dumps(content_type), len(response.content),
+        bool(response.headers.get('Location')),
+    ))
+    # Report only fixed marker names and booleans, never page content or URLs.
+    markers = {name: name in response.text for name in ('DTSGInitData', 'fb_dtsg', 'LSD')}
+    tprint('* Facebook login: page markers = {}'.format(json.dumps(markers)))
+    tprint('* Facebook login: fb_dtsg extracted = {}'.format(
+        bool(tokens and tokens.get('fb_dtsg')),
+    ))
+
 def debug_post_response(response):
     if response is None:
         tprint('* Facebook debug: no HTTP response received for the POST')
@@ -66,10 +82,17 @@ def debug_post_response(response):
             number, json.dumps(response_shape(frame), ensure_ascii=False),
         ))
 
-class FacebookDebugSession(Session):
+class FacebookSession(Session):
+    last_get_response = None
     last_post_response = None
 
+    def get(self, *args, **kwargs):
+        self.last_get_response = None
+        self.last_get_response = super().get(*args, **kwargs)
+        return self.last_get_response
+
     def post(self, *args, **kwargs):
+        self.last_post_response = None
         self.last_post_response = super().post(*args, **kwargs)
         return self.last_post_response
 
@@ -133,17 +156,45 @@ class Feed2Facebook(object):
         return cookies
 
     @staticmethod
-    def call_fbpost(operation, function, *args):
+    def call_fbpost(operation, function, *args, error_hint=None):
         # Upstream CLI helpers print response bodies on errors and call sys.exit().
         # Keep session data out of logs and turn those exits into posting failures.
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             try:
                 return function(*args)
             except SystemExit:
+                if error_hint is None:
+                    error_hint = ('Check Facebook cookies and facebook_post_doc_id; '
+                                  'the entry was not recorded.')
                 raise RuntimeError(
-                    f'fbpost could not {operation}. Check Facebook cookies and '
-                    'facebook_post_doc_id; the entry was not recorded.'
+                    f'fbpost could not {operation}. {error_hint}'
                 ) from None
+
+    @staticmethod
+    def create_session(cookies):
+        # Use curl_cffi's matching browser headers instead of fbpost's Chrome 134 headers.
+        session = FacebookSession(impersonate='chrome124', allow_redirects=False, headers={
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        })
+        for name, value in cookies.items():
+            session.cookies.set(name, value, domain='.facebook.com', secure=True)
+        return session
+
+    def fetch_login_tokens(self, session, debug=False):
+        tokens = None
+        try:
+            tokens = self.call_fbpost('fetch login tokens', fetch_tokens, session, error_hint=(
+                'Could not extract fb_dtsg from the Facebook homepage. '
+                'Check the login diagnostics above; open Facebook in a browser to check '
+                'for login or account verification, and refresh cookies if needed. '
+                'Run --check-login to check again without posting. '
+                'No post was sent; the entry was not recorded.'
+            ))
+            return tokens
+        finally:
+            if debug or tokens is None:
+                debug_login_response(session.last_get_response, tokens)
 
     def post(self, text, debug=False):
         config = self.config['default']
@@ -156,15 +207,8 @@ class Feed2Facebook(object):
 
         cookies = self.load_cookies()
         actor_id = cookies.get('i_user') or cookies['c_user']
-        # Use curl_cffi's matching browser headers instead of fbpost's Chrome 134 headers.
-        session_class = FacebookDebugSession if debug else Session
-        with session_class(impersonate='chrome124', allow_redirects=False, headers={
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }) as session:
-            for name, value in cookies.items():
-                session.cookies.set(name, value, domain='.facebook.com', secure=True)
-            tokens = self.call_fbpost('fetch login tokens', fetch_tokens, session)
+        with self.create_session(cookies) as session:
+            tokens = self.fetch_login_tokens(session, debug=debug)
             variables = build_variables(text, actor_id, privacy)
             try:
                 result = self.call_fbpost(
@@ -196,8 +240,14 @@ class Feed2Facebook(object):
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
 
-    def main(self, sync_only=False, debug=False):
+    def main(self, sync_only=False, debug=False, check_login=False):
         tprint('* Started.')
+
+        if check_login:
+            with self.create_session(self.load_cookies()) as session:
+                self.fetch_login_tokens(session, debug=True)
+            tprint('* Facebook login-token check passed; posting was not tested.')
+            return
 
         if sync_only:
             tprint('* sync_only mode: will not post to Facebook')
@@ -272,10 +322,13 @@ class Feed2Facebook(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Sync feed to Facebook')
-    parser.add_argument('--sync-only', action='store_true',
-                        help='Only sync feed to database without posting to Facebook')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--sync-only', action='store_true',
+                      help='Only sync feed to database without posting to Facebook')
+    mode.add_argument('--check-login', action='store_true',
+                      help='Check Facebook login tokens without reading the feed or database')
     parser.add_argument('--debug', action='store_true',
-                        help='Print redacted Facebook POST response details (still posts normally)')
+                        help='Print redacted Facebook login and POST details (still posts normally)')
     args = parser.parse_args()
 
-    Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug)
+    Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug, check_login=args.check_login)

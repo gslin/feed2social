@@ -81,10 +81,28 @@ retry. A timeout can occur after Facebook accepts a post, so check the
 timeline before rerunning after an uncertain result; an unrecorded entry will be
 attempted again on the next run.
 
-Use `./feed2facebook.sh --debug` to inspect an unconfirmed posting result. This
-still posts normally, with the configured audience. The debug output includes
-the POST response's HTTP status, content type, byte count, every JSON frame's
-structure, and the result selected by fbpost. String values are replaced with
+Use `./feed2facebook.sh --check-login` to check login-token extraction without
+reading the feed, opening the database, or posting. This uses the same cookies
+and homepage request as a normal run. It reports the HTTP status, content type,
+byte count, whether a redirect was returned, whether the page contains known
+token markers, and whether fbpost extracted `fb_dtsg`. Token values, page content,
+and redirect URLs are omitted. A successful check confirms token extraction;
+it does not test whether Facebook will accept a post. This mode cannot be combined
+with `--sync-only`.
+
+A `could not fetch login tokens` error happens before any post is sent and leaves
+the entry unrecorded. `facebook_post_doc_id` is not used in this step. Login
+failures print the same diagnostics even without `--debug`. A redirect is reported
+without following it. Open Facebook in the browser to check for a login or account
+verification prompt, refresh the cookies if needed, and rerun `--check-login`.
+Missing `fb_dtsg` alone does not prove the cookies expired: the homepage response
+or token markup may have changed. If the browser session works but the check
+still fails, share the redacted diagnostics to investigate the response.
+
+Use `./feed2facebook.sh --debug` to inspect login and an unconfirmed posting result.
+This still posts normally, with the configured audience. Besides login diagnostics,
+the debug output includes the POST response's HTTP status, content type, byte count,
+every JSON frame's structure, and the result selected by fbpost. String values are replaced with
 their lengths, numbers with their types; nulls and booleans remain visible.
 Request headers, cookies, login tokens, and non-JSON response content are not
 printed. The existing feed-content log still contains the intended post text.
