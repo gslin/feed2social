@@ -190,6 +190,7 @@ class Feed2Facebook(object):
 
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
+                    break
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Sync feed to Facebook')

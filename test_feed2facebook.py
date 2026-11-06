@@ -141,9 +141,10 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(self.http.call_args.args[0].cookies['c_user'], '100001')
 
     def test_sync_only_needs_no_cookies_and_never_contacts_facebook(self):
+        self.items.insert(0, self.entry(entry_id='entry-2'))
         self.cookie_file.unlink()
         self.app.main(sync_only=True)
-        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
         self.http.assert_not_called()
 
     def test_excluded_and_processed_entries_need_no_cookies(self):
@@ -241,12 +242,38 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(self.recorded_ids(), [])
         self.assertTrue(self.http.call_args.args[0]._closed)
 
-    def test_later_failure_preserves_successful_entry_and_feed_order(self):
+    def test_posts_one_entry_per_run_in_feed_order(self):
+        self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
+        self.items.append(self.entry(body='#nofb', entry_id='excluded'))
+        self.http.side_effect = [
+            self.homepage(), self.post_response(), self.homepage(), self.post_response(),
+        ]
+
+        self.app.main()
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
+                         'Hello & 台灣\n\nhttps://example.com/post')
+
+        self.app.main()
+        self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
+        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
+                         'Second post\n\nhttps://example.com/post')
+
+        self.app.main()
+        self.assertEqual(self.http.call_count, 4)
+
+    def test_failure_on_next_run_preserves_successful_entry_and_feed_order(self):
         self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
         self.http.side_effect = [
             self.homepage(), self.post_response(),
             self.homepage(), self.response('{"errors":[{"message":"Rejected"}]}'),
         ]
+
+        self.app.main()
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 2)
 
         with self.assertRaises(RuntimeError):
             self.app.main()

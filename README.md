@@ -55,7 +55,10 @@ before exporting. The old `facebook_username` setting is unused and can be remov
 (only me). Each post contains the feed text followed by its source URL.
 
 `./feed2facebook.sh --sync-only` records feed entries without reading cookies or
-contacting Facebook. It marks entries as processed; it is not a dry run.
+contacting Facebook. It processes all eligible entries in one run and marks them
+as processed; it is not a dry run. Normal runs publish at most one entry, stopping
+after recording a successful post. Remaining entries are left for later runs,
+in feed order from oldest to newest.
 Normal runs stop on failed or unconfirmed posts. An entry is recorded only after
 Facebook returns a story ID or URL without GraphQL errors. There is no automatic
 request retry. A timeout can occur after Facebook accepts a post, so check the
