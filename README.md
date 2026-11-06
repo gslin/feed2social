@@ -103,10 +103,14 @@ error instead of updating it. The wrappers pass arguments through to the Python
 scripts and return the script's exit status. The Facebook wrapper also retains
 its browser cleanup.
 
-uv must be available on the scheduler's `PATH`. Use `command -v uv` to find its
-installation directory. For a standard installation in `~/.local/bin`, use an
-explicit `PATH` and an absolute script path in crontab, replacing the example
-paths with your own:
+The wrappers preserve the scheduler's `PATH` and also search `~/.local/bin` and
+mise's latest uv installation at
+`~/.local/share/mise/installs/uv/latest/.mise-bins`. Set `MISE_DATA_DIR` if mise
+uses a different data directory. This works without interactive shell activation
+or a globally configured mise uv version. For other installation locations, add
+the directory reported by `command -v uv` to the scheduler's `PATH`.
+
+Use an absolute script path in crontab, replacing the example paths with your own:
 
 Create the log directory before enabling the scheduled jobs:
 
@@ -115,7 +119,7 @@ mkdir -p ~/log
 ```
 
 ```cron
-PATH=/home/your-user/.local/bin:/usr/local/bin:/usr/bin:/bin
+PATH=/usr/local/bin:/usr/bin:/bin
 */2 * * * * /path/to/feed2social/feed2bluesky.sh >> "$HOME/log/feed2bluesky.log" 2>&1
 ```
 
