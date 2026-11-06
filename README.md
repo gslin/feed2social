@@ -79,6 +79,16 @@ request retry. A timeout can occur after Facebook accepts a post, so check the
 timeline before rerunning after an uncertain result; an unrecorded entry will be
 attempted again on the next run.
 
+Use `./feed2facebook.sh --debug` to inspect an unconfirmed posting result. This
+still posts normally, with the configured audience. The debug output includes
+the POST response's HTTP status, content type, byte count, every JSON frame's
+structure, and the result selected by fbpost. String values are replaced with
+their lengths, numbers with their types; nulls and booleans remain visible.
+Request headers, cookies, login tokens, and non-JSON response content are not
+printed. The existing feed-content log still contains the intended post text.
+If the run reports an error, check the Facebook timeline before retrying: the
+post may already exist even when no post ID was extracted.
+
 Facebook can change its private GraphQL schema and document IDs. By default,
 the script uses fbpost's `POST_DOC_ID`; `facebook_post_doc_id` can override it
 with a numeric ID captured from a successful `ComposerStoryCreateMutation`

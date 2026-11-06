@@ -24,6 +24,55 @@ def tprint(*args, **kwargs):
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('[%Y-%m-%dT%H:%M:%SZ]')
     print(timestamp, *args, **kwargs)
 
+def response_shape(value):
+    """Keep JSON structure without exposing response text, IDs, or tokens."""
+    if isinstance(value, dict):
+        return {key: response_shape(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [response_shape(item) for item in value]
+    if isinstance(value, str):
+        return '<string: {} chars>'.format(len(value))
+    if value is None or isinstance(value, bool):
+        return value
+    return '<{}>'.format(type(value).__name__)
+
+def debug_post_response(response):
+    if response is None:
+        tprint('* Facebook debug: no HTTP response received for the POST')
+        return
+    content_type = response.headers.get('Content-Type', '').split(';', 1)[0]
+    tprint('* Facebook debug: HTTP {}, content-type={}, body_bytes={}'.format(
+        response.status_code, json.dumps(content_type), len(response.content),
+    ))
+    body = response.text.lstrip()
+    if body.startswith('for (;;);'):
+        body = body[len('for (;;);'):]
+    # fbpost selects only the first data-bearing line; show all frames here.
+    try:
+        frames = [json.loads(body)]
+    except ValueError:
+        lines = [line for line in body.splitlines() if line.strip()]
+        frames = []
+        for number, line in enumerate(lines, 1):
+            try:
+                frames.append(json.loads(line))
+            except ValueError:
+                tprint('* Facebook debug: non-JSON line {} ({} chars, content omitted)'.format(
+                    number, len(line),
+                ))
+    tprint('* Facebook debug: {} JSON frame(s)'.format(len(frames)))
+    for number, frame in enumerate(frames, 1):
+        tprint('* Facebook debug: response JSON #{} = {}'.format(
+            number, json.dumps(response_shape(frame), ensure_ascii=False),
+        ))
+
+class FacebookDebugSession(Session):
+    last_post_response = None
+
+    def post(self, *args, **kwargs):
+        self.last_post_response = super().post(*args, **kwargs)
+        return self.last_post_response
+
 class Feed2Facebook(object):
     _config = None
 
@@ -96,7 +145,7 @@ class Feed2Facebook(object):
                     'facebook_post_doc_id; the entry was not recorded.'
                 ) from None
 
-    def post(self, text):
+    def post(self, text, debug=False):
         config = self.config['default']
         privacy = config.get('facebook_privacy', 'EVERYONE').strip().upper()
         if privacy not in ('SELF', 'FRIENDS', 'EVERYONE'):
@@ -108,7 +157,8 @@ class Feed2Facebook(object):
         cookies = self.load_cookies()
         actor_id = cookies.get('i_user') or cookies['c_user']
         # Use curl_cffi's matching browser headers instead of fbpost's Chrome 134 headers.
-        with Session(impersonate='chrome124', allow_redirects=False, headers={
+        session_class = FacebookDebugSession if debug else Session
+        with session_class(impersonate='chrome124', allow_redirects=False, headers={
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
         }) as session:
@@ -116,10 +166,19 @@ class Feed2Facebook(object):
                 session.cookies.set(name, value, domain='.facebook.com', secure=True)
             tokens = self.call_fbpost('fetch login tokens', fetch_tokens, session)
             variables = build_variables(text, actor_id, privacy)
-            result = self.call_fbpost(
-                'publish the post', graphql_request, session, tokens, actor_id,
-                doc_id, 'ComposerStoryCreateMutation', variables,
-            )
+            try:
+                result = self.call_fbpost(
+                    'publish the post', graphql_request, session, tokens, actor_id,
+                    doc_id, 'ComposerStoryCreateMutation', variables,
+                )
+            finally:
+                if debug:
+                    debug_post_response(session.last_post_response)
+
+        if debug:
+            tprint('* Facebook debug: fbpost result = {}'.format(
+                json.dumps(response_shape(result), ensure_ascii=False),
+            ))
 
         if not isinstance(result, dict) or result.get('errors'):
             raise RuntimeError('Facebook rejected the post; check cookies and facebook_post_doc_id.')
@@ -133,7 +192,7 @@ class Feed2Facebook(object):
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
 
-    def main(self, sync_only=False):
+    def main(self, sync_only=False, debug=False):
         tprint('* Started.')
 
         if sync_only:
@@ -200,7 +259,7 @@ class Feed2Facebook(object):
                         s.commit()
                         continue
 
-                    post_id = self.post(content)
+                    post_id = self.post(content, debug=debug)
                     tprint('* Facebook post = {}'.format(post_id))
 
                     c.execute(sql_insert, (id_str, int(time.time())))
@@ -211,6 +270,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Sync feed to Facebook')
     parser.add_argument('--sync-only', action='store_true',
                         help='Only sync feed to database without posting to Facebook')
+    parser.add_argument('--debug', action='store_true',
+                        help='Print redacted Facebook POST response details (still posts normally)')
     args = parser.parse_args()
 
-    Feed2Facebook().main(sync_only=args.sync_only)
+    Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug)

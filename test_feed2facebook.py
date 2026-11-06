@@ -144,7 +144,7 @@ class Feed2FacebookTests(unittest.TestCase):
         self.items.insert(0, self.entry(entry_id='entry-2'))
         self.app._config['default']['facebook_c_user'] = 'incomplete-config'
         self.cookie_file.unlink()
-        self.app.main(sync_only=True)
+        self.app.main(sync_only=True, debug=True)
         self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
         self.http.assert_not_called()
 
@@ -348,6 +348,69 @@ class Feed2FacebookTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.http.side_effect = [self.homepage(), self.response(body)]
                 self.assertEqual(self.app.post('Hello'), 'story-1')
+
+    def test_debug_shows_all_response_frames_and_fbpost_selection_without_values(self):
+        first = {'data': {'story_create': None}, 'has_next': True}
+        second = json.loads(self.post_response().text)
+        second['extensions'] = {
+            'token': 'private-token', 'user_id': 123456789,
+            'details': [{'text': 'private-response-text', 'complete': True}],
+        }
+        response = self.response('for (;;);' + json.dumps(first) + '\n' + json.dumps(second))
+        response.headers['Content-Type'] = 'application/json; charset=utf-8'
+        response.headers['Set-Cookie'] = 'xs=private-response-cookie'
+        self.http.side_effect = [self.homepage(), response]
+        output = io.StringIO()
+
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, 'no post ID or URL'):
+                self.app.main(debug=True)
+
+        log = output.getvalue()
+        self.assertIn('HTTP 200, content-type="application/json"', log)
+        self.assertIn('2 JSON frame(s)', log)
+        self.assertIn('response JSON #2', log)
+        self.assertIn('"details": [{"text": "<string:', log)
+        self.assertIn('fbpost result = {"data": {"story_create": null}, "has_next": true}', log)
+        for secret in ('private-token', 'private-session', 'private-csrf', 'private-lsd',
+                       'private-response-text', 'private-response-cookie', '123456789', 'story-1'):
+            self.assertNotIn(secret, log)
+        self.assertEqual(self.recorded_ids(), [])
+        self.assertEqual(self.http.call_count, 2)
+        self.assertTrue(self.http.call_args.args[0]._closed)
+
+    def test_debug_reports_http_error_without_printing_non_json_content(self):
+        self.http.side_effect = [self.homepage(), self.response('<html>private-body</html>', 503)]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, 'publish the post'):
+                self.app.main(debug=True)
+        log = output.getvalue()
+        self.assertIn('HTTP 503', log)
+        self.assertIn('non-JSON line 1', log)
+        self.assertNotIn('private-body', log)
+        self.assertEqual(self.recorded_ids(), [])
+        self.assertEqual(self.http.call_count, 2)
+
+    def test_debug_reports_missing_response_without_retrying_timeout(self):
+        self.http.side_effect = [self.homepage(), RequestsError('Timed out')]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaises(RequestsError):
+                self.app.main(debug=True)
+        self.assertIn('no HTTP response received', output.getvalue())
+        self.assertEqual(self.recorded_ids(), [])
+        self.assertEqual(self.http.call_count, 2)
+
+    def test_debug_success_still_records_one_entry_and_stops(self):
+        self.items.insert(0, self.entry(entry_id='entry-2'))
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            self.app.main(debug=True)
+        self.assertIn('1 JSON frame(s)', output.getvalue())
+        self.assertIn('fbpost result', output.getvalue())
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 2)
 
     def test_url_only_confirmation_is_accepted(self):
         self.http.side_effect = [self.homepage(), self.response(json.dumps({
