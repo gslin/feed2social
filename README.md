@@ -83,9 +83,15 @@ installation directory. For a standard installation in `~/.local/bin`, use an
 explicit `PATH` and an absolute script path in crontab, replacing the example
 paths with your own:
 
+Create the log directory before enabling the scheduled jobs:
+
+```bash
+mkdir -p ~/log
+```
+
 ```cron
 PATH=/home/your-user/.local/bin:/usr/local/bin:/usr/bin:/bin
-*/2 * * * * /path/to/feed2social/feed2bluesky.sh >> /path/to/feed2bluesky.log 2>&1
+*/2 * * * * /path/to/feed2social/feed2bluesky.sh >> "$HOME/log/feed2bluesky.log" 2>&1
 ```
 
 The first run may download Python and dependencies. You can prepare the
