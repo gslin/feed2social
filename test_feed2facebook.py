@@ -273,6 +273,11 @@ class Feed2FacebookTests(unittest.TestCase):
             {'data': None}, {}, [], {'data': {'story_create': None}},
             {'data': {'story_create': {'story': {}}}},
             {'data': {'story_create': {'story': {'id': True, 'url': ''}}}},
+            {'data': {'story_create': {'post_id': '', 'story_id': '   ', 'story': None}}},
+            {'data': {'story_create': {'post_id': True, 'story_id': 123, 'story': None}}},
+            {'data': {'story_create': {'logging_token': 'token-only', 'story': None}}},
+            {'data': {'story_create': {'post_id': '12345678901234567', 'story': None}},
+             'errors': [{'message': 'Request rejected'}]},
         ]
         for result in invalid_results:
             with self.subTest(result=result):
@@ -418,6 +423,49 @@ class Feed2FacebookTests(unittest.TestCase):
         }))]
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1'])
+
+    def test_creation_ids_with_null_story_record_success_and_stop_without_duplicates(self):
+        # Structure from the reported Facebook response; identifier/token values replaced.
+        response = self.response(json.dumps({
+            'data': {'story_create': {
+                'story_id': 'redacted-story-id',
+                'post_id': '12345678901234567',
+                'publishing_flow': '<redacted>',
+                'story': None,
+                'timeline_feed_units_edge': None,
+                'logging_token': '<redacted>',
+            }},
+            'extensions': {
+                'server_metadata': {'request_start_time_ms': 1, 'time_at_flush_ms': 2},
+                'is_final': True,
+            },
+        }))
+        response.headers['Content-Type'] = 'text/html'
+        self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
+        self.http.side_effect = [
+            self.homepage(), response, self.homepage(), self.post_response(),
+        ]
+
+        with patch('feed2facebook.tprint') as output:
+            self.app.main()
+        output.assert_any_call('* Facebook post = 12345678901234567')
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 2)
+
+        self.app.main()
+        self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
+        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
+                         'Second post\n\nhttps://example.com/post')
+
+        self.app.main()
+        self.assertEqual(self.http.call_count, 4)
+
+    def test_creation_story_id_is_accepted_without_post_id_or_expanded_story(self):
+        self.http.side_effect = [self.homepage(), self.response(json.dumps({
+            'data': {'story_create': {'story_id': 'redacted-story-id', 'story': None}},
+        }))]
+        self.assertEqual(self.app.post('Hello'), 'redacted-story-id')
 
 
 if __name__ == '__main__':

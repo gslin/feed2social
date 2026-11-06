@@ -74,8 +74,10 @@ as processed; it is not a dry run. Normal runs publish at most one entry, stoppi
 after recording a successful post. Remaining entries are left for later runs,
 in feed order from oldest to newest.
 Normal runs stop on failed or unconfirmed posts. An entry is recorded only after
-Facebook returns a story ID or URL without GraphQL errors. There is no automatic
-request retry. A timeout can occur after Facebook accepts a post, so check the
+Facebook returns a post/story ID or story URL without GraphQL errors. The script
+accepts `story_create.post_id` or `story_create.story_id` even when `story` is null,
+as well as the expanded `story.id` or `story.url`. There is no automatic request
+retry. A timeout can occur after Facebook accepts a post, so check the
 timeline before rerunning after an uncertain result; an unrecorded entry will be
 attempted again on the next run.
 

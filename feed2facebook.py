@@ -182,12 +182,16 @@ class Feed2Facebook(object):
 
         if not isinstance(result, dict) or result.get('errors'):
             raise RuntimeError('Facebook rejected the post; check cookies and facebook_post_doc_id.')
-        story = result
-        for key in ('data', 'story_create', 'story'):
-            story = story.get(key) if isinstance(story, dict) else None
-        if isinstance(story, dict):
-            for key in ('id', 'url'):
-                value = story.get(key)
+        created = result
+        for key in ('data', 'story_create'):
+            created = created.get(key) if isinstance(created, dict) else None
+        if isinstance(created, dict):
+            # Facebook can return creation IDs while the expanded story is null.
+            identifiers = [created.get('post_id'), created.get('story_id')]
+            story = created.get('story')
+            if isinstance(story, dict):
+                identifiers.extend([story.get('id'), story.get('url')])
+            for value in identifiers:
                 if isinstance(value, str) and value.strip():
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
