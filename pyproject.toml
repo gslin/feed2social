@@ -6,12 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "atproto",
+    "curl-cffi>=0.7.4",
+    "fbpost",
     "feedparser",
     "httpx",
     "lxml",
     "lxml-html-clean",
     "plurk-oauth",
-    "selenium",
     "sentry-sdk",
     "setuptools",
     "twifork[impersonate]>=2.4.0",
@@ -20,3 +21,6 @@ dependencies = [
 [tool.uv]
 package = false
 python-preference = "only-managed"
+
+[tool.uv.sources]
+fbpost = { git = "https://github.com/htlin222/fbpost.git", rev = "2dbd2fc28b33788a2f91328cc42fe3820d7c31ec" }

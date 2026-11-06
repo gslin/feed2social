@@ -18,7 +18,8 @@ The `~/.config/feed2social/config.ini` file:
 [default]
 bluesky_username = username.bsky.social
 bluesky_password = x
-facebook_username = username
+facebook_cookies_file = ~/.config/feed2social/facebook-cookies.json
+facebook_privacy = EVERYONE
 feed_url = https://abpe.org/@gslin.rss
 plurk_app_key = x
 plurk_app_secret = x
@@ -30,7 +31,47 @@ twitter_auth_token = x
 twitter_ct0 = x
 ```
 
-The `facebook_username` is used for generating the url `https://www.facebook.com/${facebook_username}`.
+### Facebook
+
+Facebook uses [fbpost](https://github.com/htlin222/fbpost), pinned to a Git commit,
+for its web GraphQL payloads, login-token extraction, and response parsing.
+Requests use `curl_cffi` with the supported `chrome124` browser profile.
+Selenium, Firefox, and geckodriver are no longer needed. The upstream package
+depends on Playwright, but this integration does not launch it or require a
+Playwright browser download.
+
+Log in to `https://www.facebook.com/` in a browser and export that site's cookies
+as a JSON array (for example, Cookie-Editor's JSON export). Save the file as
+`~/.config/feed2social/facebook-cookies.json`, or set `facebook_cookies_file` to
+another path. Each cookie needs `name`, `value`, and `domain` fields. The export
+must include `c_user` and `xs`; keeping the other Facebook cookies is recommended.
+Keep the file private (`chmod 600`), outside the repository, and refresh it from
+the browser when the session expires. The script does not log in with a password.
+
+Posts use the identity in the exported cookies: `c_user` for a personal account,
+or `i_user` when exported after switching to a Page. Check the selected identity
+before exporting. The old `facebook_username` setting is unused and can be removed.
+`facebook_privacy` accepts `EVERYONE` (public, the default), `FRIENDS`, or `SELF`
+(only me). Each post contains the feed text followed by its source URL.
+
+`./feed2facebook.sh --sync-only` records feed entries without reading cookies or
+contacting Facebook. It marks entries as processed; it is not a dry run.
+Normal runs stop on failed or unconfirmed posts. An entry is recorded only after
+Facebook returns a story ID or URL without GraphQL errors. There is no automatic
+request retry. A timeout can occur after Facebook accepts a post, so check the
+timeline before rerunning after an uncertain result; an unrecorded entry will be
+attempted again on the next run.
+
+Facebook can change its private GraphQL schema and document IDs. By default,
+the script uses fbpost's `POST_DOC_ID`; `facebook_post_doc_id` can override it
+with a numeric ID captured from a successful `ComposerStoryCreateMutation`
+request in the browser. Schema changes may also require updating the pinned
+fbpost revision. Offline tests verify the integration, not whether Facebook
+currently accepts that upstream schema for your account.
+
+Run the offline Facebook tests with `uv run --locked python -m unittest -v
+test_feed2facebook`. They use temporary cookies and databases with intercepted
+HTTP requests, without reading account configuration or posting to Facebook.
 
 ### Twitter
 
@@ -100,8 +141,7 @@ uv creates `.venv` if needed and synchronizes dependencies with `uv.lock` before
 running the script. No manual environment setup or activation is required.
 The lockfile must be present and match `pyproject.toml`; `--locked` reports an
 error instead of updating it. The wrappers pass arguments through to the Python
-scripts and return the script's exit status. The Facebook wrapper also retains
-its browser cleanup.
+scripts and return the script's exit status.
 
 The wrappers preserve the scheduler's `PATH` and also search `~/.local/bin` and
 mise's latest uv installation at
@@ -140,7 +180,7 @@ uv run --locked python check-env.py
 The environment check imports all scripts without running their main functions.
 It does not read account configuration, modify databases, post messages, refresh
 tokens, or start a browser. It checks Python dependencies, not service credentials
-or the external Firefox and geckodriver installation.
+or live posting compatibility.
 
 To update Python within the 3.12 series:
 
