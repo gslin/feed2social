@@ -36,7 +36,22 @@ The `facebook_username` is used for generating the url `https://www.facebook.com
 
 ## Install
 
-    pip install -r requirements.txt
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
+these commands from the repository directory:
+
+```bash
+uv sync --locked
+.venv/bin/python check-env.py
+```
+
+uv installs its own Python 3.12 and creates `.venv` using the versions in
+`uv.lock`. The project does not use packages installed in a global Python,
+mise Python, or pyenv Python. Commit `pyproject.toml`, `uv.lock`, and
+`.python-version`; `.venv` is generated locally and ignored by Git.
+
+For a new installation, create the databases after configuring the account:
+
+    mkdir -p ~/.config/feed2social
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2bluesky.sqlite3
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2facebook.sqlite3
     echo "CREATE TABLE entry (entry_id VARCHAR, created_at INT);" | sqlite3 ~/.config/feed2social/feed2plurk.sqlite3
@@ -45,17 +60,7 @@ The `facebook_username` is used for generating the url `https://www.facebook.com
 
 ## Run
 
-Just run it periodically (usually with crontab):
-
-```bash
-./feed2bluesky.py
-./feed2facebook.py
-./feed2plurk.py
-./feed2threads.py
-./feed2twitter.py
-```
-
-We also support package manager environment like [pyenv](https://github.com/pyenv/pyenv) or [mise](https://github.com/jdx/mise), via shell script wrappers:
+Run the shell wrappers periodically, usually with crontab:
 
 ```bash
 ./feed2bluesky.sh
@@ -63,7 +68,64 @@ We also support package manager environment like [pyenv](https://github.com/pyen
 ./feed2plurk.sh
 ./feed2threads.sh
 ./feed2twitter.sh
+./threads-refresh-access-token.sh
 ```
+
+The wrappers use the repository's `.venv/bin/python` and work from any working
+directory. They do not need uv, mise, pyenv, or an activated virtual environment
+on the scheduler's `PATH`. They pass arguments through to the Python scripts
+and return the script's exit status. The Facebook wrapper also retains its
+browser cleanup.
+
+Use an absolute path in crontab, for example:
+
+```cron
+*/2 * * * * /path/to/feed2social/feed2bluesky.sh >> /path/to/feed2bluesky.log 2>&1
+```
+
+Run `uv sync --locked` during installation or deployment, before enabling the
+scheduled jobs. The wrappers do not install or update packages when they run.
+To run a Python script directly, use `.venv/bin/python feed2bluesky.py`.
+
+## Maintenance
+
+After pulling a project update, install its locked dependencies and check the
+environment:
+
+```bash
+uv sync --locked
+.venv/bin/python check-env.py
+```
+
+The environment check imports all scripts without running their main functions.
+It does not read account configuration, modify databases, post messages, refresh
+tokens, or start a browser. It checks Python dependencies, not service credentials
+or the external Firefox and geckodriver installation.
+
+To update Python within the 3.12 series:
+
+```bash
+uv python upgrade 3.12
+.venv/bin/python check-env.py
+```
+
+`.python-version` selects `3.12` rather than a patch version, allowing uv-managed
+environments to follow patch upgrades. The runtime may be shared by other uv
+projects using Python 3.12, so schedule this update accordingly and restart any
+long-running processes. Changing to Python 3.13 requires an explicit update to
+`.python-version` and `requires-python` in `pyproject.toml`.
+
+Update package versions separately from Python:
+
+```bash
+uv lock --upgrade
+uv sync --locked
+.venv/bin/python check-env.py
+```
+
+Review and commit the `uv.lock` changes. To update one dependency, use
+`uv lock --upgrade-package PACKAGE` instead. Add or remove dependencies with
+`uv add PACKAGE` and `uv remove PACKAGE`.
 
 ## Workarounds
 

@@ -1,0 +1,22 @@
+[project]
+name = "feed2social"
+version = "0.1.0"
+description = "Sync feed to social networks."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "atproto",
+    "authlib",
+    "feedparser",
+    "httpx",
+    "lxml",
+    "lxml-html-clean",
+    "plurk-oauth",
+    "selenium",
+    "sentry-sdk",
+    "setuptools",
+]
+
+[tool.uv]
+package = false
+python-preference = "only-managed"
