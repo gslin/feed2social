@@ -86,7 +86,13 @@ reading the feed, opening the database, or posting. This uses the same cookies
 and homepage request as a normal run. It reports the HTTP status, content type,
 byte count, whether a redirect was returned, whether the page contains known
 token markers, and whether fbpost extracted `fb_dtsg`. Token values, page content,
-and redirect URLs are omitted. A successful check confirms token extraction;
+and redirect URLs are omitted. The `token fields` line shows only the `token` and
+`async_get_token` fields from recognized `DTSGInitData` and `LSD` module payloads.
+Strings are replaced with their lengths; nulls and booleans remain visible.
+An empty object means those fields are missing; an empty array means no module
+definition was recognized. This distinguishes a missing or empty token from a
+nonempty token that fbpost's strict formatting rules did not match.
+A successful check confirms token extraction;
 it does not test whether Facebook will accept a post. This mode cannot be combined
 with `--sync-only`.
 

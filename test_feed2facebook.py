@@ -289,10 +289,63 @@ class Feed2FacebookTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
                 self.app.main(debug=True)
         self.assertIn('"DTSGInitData": true', output.getvalue())
+        self.assertIn('"DTSGInitData": [{"token": "<string: 12 chars>"}]', output.getvalue())
         self.assertIn('fb_dtsg extracted = False', output.getvalue())
         self.assertNotIn('private-csrf', output.getvalue())
         self.assertEqual(self.http.call_count, 1)
         self.assertEqual(self.recorded_ids(), [])
+
+    def test_login_diagnostics_distinguish_missing_empty_and_null_tokens(self):
+        for token_fields in ({}, {'token': ''}, {'token': None}, {'token': False}):
+            with self.subTest(token_fields=token_fields):
+                self.http.reset_mock()
+                self.http.side_effect = [self.response(
+                    '<html>["DTSGInitData", [], ' + json.dumps(token_fields) + ', 258],'
+                    '["LSD",[],{"token":"private-lsd"},323]</html>',
+                )]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
+                        self.app.main(check_login=True)
+                log = output.getvalue()
+                expected = dict(token_fields)
+                if expected.get('token') == '':
+                    expected['token'] = '<string: 0 chars>'
+                self.assertIn('"DTSGInitData": ' + json.dumps([expected]), log)
+                self.assertIn('"LSD": [{"token": "<string: 11 chars>"}]', log)
+                self.assertNotIn('private-lsd', log)
+                self.assertEqual(self.http.call_count, 1)
+                self.assertEqual(self.recorded_ids(), [])
+
+    def test_login_diagnostics_redact_reordered_fields_and_skip_unrelated_values(self):
+        self.http.side_effect = [self.response(
+            '<html>["DTSGInitData",[],{"private-key":"private-value",'
+            '"async_get_token":"private-async","token":"private-csrf"},258]</html>',
+        )]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
+                self.app.main(check_login=True)
+        log = output.getvalue()
+        self.assertIn('"token": "<string: 12 chars>"', log)
+        self.assertIn('"async_get_token": "<string: 13 chars>"', log)
+        for secret in ('private-key', 'private-value', 'private-async', 'private-csrf'):
+            self.assertNotIn(secret, log)
+        self.assertEqual(self.http.call_count, 1)
+
+    def test_login_diagnostics_handle_invalid_module_json_without_leaking_it(self):
+        for payload in ('{"secret":"private-value"', '"private-value"', '["private-value"]',
+                        '{"token":{"private-value":"private-value"}}'):
+            with self.subTest(payload=payload):
+                self.http.side_effect = [self.response(
+                    '<html>["DTSGInitData",[],' + payload + ']</html>',
+                )]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaisesRegex(RuntimeError, 'fetch login tokens'):
+                        self.app.main(check_login=True)
+                self.assertNotIn('private-value', output.getvalue())
+                self.assertIn('token fields', output.getvalue())
 
     def test_login_http_error_and_timeout_report_diagnostics_without_posting(self):
         for response in (self.response('private-error-page', 503), RequestsError('Timed out')):

@@ -9,6 +9,7 @@ import html
 import io
 import json
 import os
+import re
 import sentry_sdk
 import sqlite3
 import time
@@ -48,6 +49,30 @@ def debug_login_response(response, tokens):
     # Report only fixed marker names and booleans, never page content or URLs.
     markers = {name: name in response.text for name in ('DTSGInitData', 'fb_dtsg', 'LSD')}
     tprint('* Facebook login: page markers = {}'.format(json.dumps(markers)))
+    # Decode only the known module payloads; report token types/lengths, not values.
+    # A marker alone cannot distinguish an empty token from incompatible formatting.
+    modules = {}
+    for name in ('DTSGInitData', 'LSD'):
+        modules[name] = []
+        pattern = r'"' + name + r'"\s*,\s*\[\s*\]\s*,\s*'
+        for match in re.finditer(pattern, response.text):
+            try:
+                data, _ = json.JSONDecoder().raw_decode(response.text, match.end())
+            except ValueError:
+                modules[name].append('<unrecognized JSON>')
+                continue
+            if isinstance(data, dict):
+                fields = {}
+                for key in ('token', 'async_get_token'):
+                    if key in data:
+                        value = data[key]
+                        fields[key] = (response_shape(value)
+                                       if value is None or isinstance(value, (str, bool))
+                                       else '<{}>'.format(type(value).__name__))
+                modules[name].append(fields)
+            else:
+                modules[name].append('<unexpected payload type>')
+    tprint('* Facebook login: token fields = {}'.format(json.dumps(modules)))
     tprint('* Facebook login: fb_dtsg extracted = {}'.format(
         bool(tokens and tokens.get('fb_dtsg')),
     ))
