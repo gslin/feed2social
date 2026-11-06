@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cd -- "$(dirname -- "$0")" || exit 1
-LANG=en_US.UTF-8 ./.venv/bin/python ./feed2facebook.py "$@"
+LANG=en_US.UTF-8 uv run --locked python ./feed2facebook.py "$@"
 script_status=$?
 
 # Since our pkill run with parent pid filtering (ppid == 1), we need to

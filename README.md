@@ -37,11 +37,10 @@ The `facebook_username` is used for generating the url `https://www.facebook.com
 ## Install
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
-these commands from the repository directory:
+this command from the repository directory:
 
 ```bash
-uv sync --locked
-.venv/bin/python check-env.py
+uv run --locked python check-env.py
 ```
 
 uv installs its own Python 3.12 and creates `.venv` using the versions in
@@ -71,21 +70,28 @@ Run the shell wrappers periodically, usually with crontab:
 ./threads-refresh-access-token.sh
 ```
 
-The wrappers use the repository's `.venv/bin/python` and work from any working
-directory. They do not need uv, mise, pyenv, or an activated virtual environment
-on the scheduler's `PATH`. They pass arguments through to the Python scripts
-and return the script's exit status. The Facebook wrapper also retains its
-browser cleanup.
+The wrappers use `uv run --locked python` and work from any working directory.
+uv creates `.venv` if needed and synchronizes dependencies with `uv.lock` before
+running the script. No manual environment setup or activation is required.
+The lockfile must be present and match `pyproject.toml`; `--locked` reports an
+error instead of updating it. The wrappers pass arguments through to the Python
+scripts and return the script's exit status. The Facebook wrapper also retains
+its browser cleanup.
 
-Use an absolute path in crontab, for example:
+uv must be available on the scheduler's `PATH`. Use `command -v uv` to find its
+installation directory. For a standard installation in `~/.local/bin`, use an
+explicit `PATH` and an absolute script path in crontab, replacing the example
+paths with your own:
 
 ```cron
+PATH=/home/your-user/.local/bin:/usr/local/bin:/usr/bin:/bin
 */2 * * * * /path/to/feed2social/feed2bluesky.sh >> /path/to/feed2bluesky.log 2>&1
 ```
 
-Run `uv sync --locked` during installation or deployment, before enabling the
-scheduled jobs. The wrappers do not install or update packages when they run.
-To run a Python script directly, use `.venv/bin/python feed2bluesky.py`.
+The first run may download Python and dependencies. You can prepare the
+environment in advance with `uv sync --locked`, but this is optional. Account
+configuration and database initialization are still required as described above.
+To run a Python script directly, use `uv run --locked python feed2bluesky.py`.
 
 ## Maintenance
 
@@ -93,8 +99,7 @@ After pulling a project update, install its locked dependencies and check the
 environment:
 
 ```bash
-uv sync --locked
-.venv/bin/python check-env.py
+uv run --locked python check-env.py
 ```
 
 The environment check imports all scripts without running their main functions.
@@ -106,7 +111,7 @@ To update Python within the 3.12 series:
 
 ```bash
 uv python upgrade 3.12
-.venv/bin/python check-env.py
+uv run --locked python check-env.py
 ```
 
 `.python-version` selects `3.12` rather than a patch version, allowing uv-managed
@@ -119,8 +124,7 @@ Update package versions separately from Python:
 
 ```bash
 uv lock --upgrade
-uv sync --locked
-.venv/bin/python check-env.py
+uv run --locked python check-env.py
 ```
 
 Review and commit the `uv.lock` changes. To update one dependency, use
