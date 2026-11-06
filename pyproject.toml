@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "atproto",
-    "authlib",
     "feedparser",
     "httpx",
     "lxml",
@@ -15,6 +14,7 @@ dependencies = [
     "selenium",
     "sentry-sdk",
     "setuptools",
+    "twifork[impersonate]>=2.4.0",
 ]
 
 [tool.uv]

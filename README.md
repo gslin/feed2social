@@ -26,13 +26,38 @@ plurk_token = x
 plurk_token_secret = x
 threads_access_token = x
 threads_user_id = x
-twitter_access_token = x
-twitter_access_token_secret = x
-twitter_api_key = x
-twitter_api_key_secret = x
+twitter_auth_token = x
+twitter_ct0 = x
 ```
 
 The `facebook_username` is used for generating the url `https://www.facebook.com/${facebook_username}`.
+
+### Twitter
+
+Twitter uses [twifork](https://github.com/PawiX25/twifork) with the `impersonate`
+extra and its `curl_cffi` backend. The client uses the supported `chrome124`
+browser profile to post text, upload images, and reply with the feed entry URL.
+The package is installed as `twifork`, but imported as `twikit`.
+
+Log in to `https://x.com/` in a browser, then open the developer tools and find
+the site's cookies under Application/Storage. Copy the `auth_token` cookie into
+`twitter_auth_token` and the `ct0` cookie into `twitter_ct0` in `config.ini`.
+These are browser session cookies, not the OAuth tokens used by the old version.
+The four old `twitter_api_key`, `twitter_api_key_secret`, `twitter_access_token`,
+and `twitter_access_token_secret` settings are no longer used and can be removed.
+Keep the cookie values private and refresh both from the browser if the session
+expires or is rejected. No password or developer API key is required.
+
+`./feed2twitter.sh --sync-only` records feed entries without contacting Twitter
+or requiring Twitter cookies. It marks entries as processed; it is not a dry run.
+Normal runs stop on Twitter errors, including upload failures and rate limits.
+A failed main post is not recorded. Once the main post succeeds it is recorded
+before the source-link reply, so a reply failure will not duplicate the main post
+on the next run; failed replies are not retried automatically.
+
+Run the offline Twitter tests with `uv run --locked python -m unittest -v
+test_feed2twitter`. These use temporary databases and mocked requests, without
+reading account configuration or posting to Twitter.
 
 ## Install
 
