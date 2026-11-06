@@ -64,6 +64,11 @@ class Feed2Twitter(object):
                 files={'media': io.BytesIO(img_res.content)},
             )
             tprint('* upload_res = {}'.format(upload_res))
+
+            if upload_res.status_code == 402:
+                tprint('* Payment required (402). Check X API credits at https://console.x.com/. Exiting.')
+                raise SystemExit(1)
+
             tprint('* upload_res.text = {}'.format(json.dumps(upload_res.json(), ensure_ascii=False)))
 
             if upload_res.status_code == 200:
@@ -185,6 +190,12 @@ class Feed2Twitter(object):
                     json=tweet_data,
                 )
                 tprint('* res = {}'.format(res))
+
+                if res.status_code == 402:
+                    tprint('* Payment required (402). Check X API credits at https://console.x.com/. Exiting.')
+                    s.close()
+                    raise SystemExit(1)
+
                 tprint('* res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
@@ -227,6 +238,12 @@ class Feed2Twitter(object):
                     json=reply_data,
                 )
                 tprint('* Reply res = {}'.format(res))
+
+                if res.status_code == 402:
+                    tprint('* Reply payment required (402). Check X API credits at https://console.x.com/. Exiting.')
+                    s.close()
+                    raise SystemExit(1)
+
                 tprint('* Reply res.text = {}'.format(json.dumps(res.json(), ensure_ascii=False)))
 
                 if res.status_code == 429:
