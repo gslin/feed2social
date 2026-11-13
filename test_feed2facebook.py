@@ -860,6 +860,63 @@ class Feed2FacebookTests(unittest.TestCase):
                 self.assertNotIn('private-', log)
                 self.assertEqual(self.http.call_count, 2)
 
+    def test_debug_error_text_identifies_failure_and_redacts_known_credentials(self):
+        # Synthetic error text exercises the diagnostic path, not Facebook's schema.
+        self.cookies[1]['value'] = 'private%3Asession'
+        self.write_cookies()
+        error = {
+            'code': 1675002, 'api_error_code': 100, 'severity': 'CRITICAL',
+            'message': 'Request failed for actor 100001 with private-csrf',
+            'summary': 'Comment rejected',
+            'description': 'Request included private%3Asession and private:session',
+            'debug_info': 'Invalid input field: example_field; private-lsd',
+            'extensions': {'description': 'Nested detail: private%253Asession'},
+            'debug_link': 'https://example.org/private-debug-link',
+        }
+        for operation in ('post', 'comment'):
+            with self.subTest(operation=operation):
+                self.http.reset_mock()
+                response = self.response(json.dumps({'errors': [error]}))
+                response.headers['Set-Cookie'] = 'xs=private-response-cookie'
+                self.http.side_effect = [self.homepage(), response]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaises(RuntimeError):
+                        if operation == 'post':
+                            self.app.post('Hello', debug=True)
+                        else:
+                            self.app.main(comment_only=('42', 'https://example.org/source'),
+                                          debug=True)
+                log = output.getvalue()
+                self.assertIn('"code": 1675002', log)
+                self.assertIn('"api_error_code": 100', log)
+                self.assertIn('"message": "Request failed for actor <redacted> with <redacted>"', log)
+                self.assertIn('"summary": "Comment rejected"', log)
+                self.assertIn('"description": "Request included <redacted> and <redacted>"', log)
+                self.assertIn('"debug_info": "Invalid input field: example_field; <redacted>"', log)
+                self.assertIn('"extensions.description": "Nested detail: <redacted>"', log)
+                self.assertNotIn('private', log)
+                self.assertNotIn('100001', log)
+                self.assertEqual(self.http.call_count, 2)
+                self.assertEqual(self.recorded_ids(), [])
+
+    def test_debug_error_text_redacts_before_truncating_and_escapes_newlines(self):
+        message = 'First line\nSecond line: ' + 'x' * 1970 + 'private-session' + 'y' * 100
+        self.http.side_effect = [self.homepage(), self.response(json.dumps({
+            'errors': [{'debug_info': message}],
+        }))]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaises(RuntimeError):
+                self.app.comment('42', 'Source', debug=True, post_recorded=False)
+        log = output.getvalue()
+        self.assertIn('First line\\nSecond line:', log)
+        self.assertNotIn('private', log)
+        line = next(line for line in log.splitlines() if 'GraphQL errors #1 = ' in line)
+        details = json.loads(line.split('GraphQL errors #1 = ', 1)[1])
+        self.assertEqual(len(details[0]['debug_info']), 2003)
+        self.assertTrue(details[0]['debug_info'].endswith('...'))
+
     def test_comment_only_bypasses_main_post_feed_database_and_post_settings(self):
         self.db_path.unlink()
         del self.app._config['default']['feed_url']

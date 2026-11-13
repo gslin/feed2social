@@ -17,7 +17,7 @@ import time
 import uuid
 
 from contextlib import closing, redirect_stderr, redirect_stdout
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from curl_cffi.requests import RequestsError, Session
 from lxml.html.clean import Cleaner
@@ -41,8 +41,16 @@ def response_shape(value):
         return value
     return '<{}>'.format(type(value).__name__)
 
-def graphql_error_details(frame):
-    """Keep error codes and schema hints without logging arbitrary error messages."""
+def redacted_error_text(value, secrets):
+    """Redact known credentials before limiting the length of an error message."""
+    variants = {variant for secret in secrets if isinstance(secret, str) and secret
+                for variant in (secret, quote(secret, safe=''), unquote(secret)) if variant}
+    for secret in sorted(variants, key=len, reverse=True):
+        value = value.replace(secret, '<redacted>')
+    return value[:2000] + ('...' if len(value) > 2000 else '')
+
+def graphql_error_details(frame, *, include_text=False, secrets=()):
+    """Keep error codes and schema hints; include redacted text only when requested."""
     errors = frame.get('errors') if isinstance(frame, dict) else None
     if not isinstance(errors, list):
         return []
@@ -66,6 +74,8 @@ def graphql_error_details(frame):
             for key in ('message', 'description', 'summary', 'debug_info'):
                 if isinstance(fields.get(key), str):
                     messages.append(fields[key])
+                    if include_text:
+                        detail[prefix + key] = redacted_error_text(fields[key], secrets)
         message = '\n'.join(messages)
         detail['message_markers'] = [marker for marker in (
             'missing_required_variable_value', 'noncoercible_variable_value',
@@ -165,7 +175,7 @@ def debug_login_response(response, tokens):
         bool(tokens and tokens.get('fb_dtsg')),
     ))
 
-def debug_post_response(response):
+def debug_post_response(response, *, include_error_text=False, secrets=()):
     if response is None:
         tprint('* Facebook debug: no HTTP response received for the POST')
         return
@@ -194,7 +204,7 @@ def debug_post_response(response):
         tprint('* Facebook debug: response JSON #{} = {}'.format(
             number, json.dumps(response_shape(frame), ensure_ascii=False),
         ))
-        errors = graphql_error_details(frame)
+        errors = graphql_error_details(frame, include_text=include_error_text, secrets=secrets)
         if errors:
             tprint('* Facebook debug: GraphQL errors #{} = {}'.format(
                 number, json.dumps(errors, ensure_ascii=False),
@@ -343,7 +353,10 @@ class Feed2Facebook(object):
                 )
             finally:
                 if debug:
-                    debug_post_response(session.last_post_response)
+                    debug_post_response(
+                        session.last_post_response, include_error_text=True,
+                        secrets=(*cookies.values(), tokens.get('fb_dtsg'), tokens.get('lsd')),
+                    )
 
         if debug:
             tprint('* Facebook debug: fbpost result = {}'.format(
@@ -439,7 +452,10 @@ class Feed2Facebook(object):
                 finally:
                     if debug or comment_id is None:
                         tprint('* Facebook debug: source comment response (doc_id={})'.format(doc_id))
-                        debug_post_response(session.last_post_response)
+                        debug_post_response(
+                            session.last_post_response, include_error_text=debug,
+                            secrets=(*cookies.values(), tokens.get('fb_dtsg'), tokens.get('lsd')),
+                        )
         except RequestsError:
             raise RuntimeError('Facebook source comment request failed. ' + error_hint) from None
 

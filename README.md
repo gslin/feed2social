@@ -96,9 +96,13 @@ Failed or unconfirmed source comments automatically print response diagnostics,
 even without `--debug`: the HTTP status, redacted JSON frames, and the comment
 document ID in use. GraphQL error summaries preserve numeric error codes,
 recognized severity values, transient flags, known protocol-error markers, and
-variable names mentioned in validation errors. Arbitrary error messages and
-their embedded values remain redacted. A rejection alone does not establish
-whether cookies, the document ID, or the variables caused it.
+variable names mentioned in validation errors. Without `--debug`, arbitrary
+error messages and their embedded values remain redacted. With `--debug`, the
+summaries also show `message`, `summary`, `description`, and `debug_info` from
+errors and their extensions. Known cookie values and login tokens, including
+URL-encoded and decoded forms, are replaced with `<redacted>` before each text
+field is limited to 2,000 characters. These fields can explain a rejection when
+the numeric codes alone are inconclusive.
 
 To diagnose or recover a source comment on an existing post, first check whether
 the comment is already present, then run:
@@ -151,9 +155,11 @@ Besides login diagnostics, the debug output includes each POST response's HTTP
 status, content type, byte count,
 every JSON frame's structure, and the result selected by fbpost. String values are replaced with
 their lengths, numbers with their types; nulls and booleans remain visible.
-The separate GraphQL error summaries retain the diagnostic fields listed above.
-Request headers, cookies, login tokens, and non-JSON response content are not
-printed. The existing feed-content log still contains the intended post text.
+The separate GraphQL error summaries include the error text described above,
+with known credentials redacted. Request headers and non-JSON response content
+are not printed. Other values echoed in error text may remain visible; review
+the diagnostics before sharing them. The existing feed-content log still
+contains the intended post text.
 If the run reports an error, check the Facebook timeline before retrying: the
 post may already exist even when no post ID was extracted.
 
