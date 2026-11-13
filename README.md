@@ -66,12 +66,17 @@ Posts use the identity in the cookies: `c_user` for a personal account, or `i_us
 when copied after switching to a Page. Check the selected identity before copying
 cookies. The old `facebook_username` setting is unused and can be removed.
 `facebook_privacy` accepts `EVERYONE` (public, the default), `FRIENDS`, or `SELF`
-(only me). Each post contains the feed text followed by its source URL.
+(only me). Each main post contains the feed text, including any URLs already in
+that text. The RSS source URL (`item['link']`) is added separately as a top-level
+comment: `Sync from: <URL>`, matching the source replies on Bluesky and Twitter.
+Empty text is skipped during normal runs; this integration does not upload images.
+Moving the source URL to a comment does not explicitly create a preview card or
+select which URL in the main text Facebook previews.
 
 `./feed2facebook.sh --sync-only` records feed entries without reading cookies or
 contacting Facebook. It processes all eligible entries in one run and marks them
 as processed; it is not a dry run. Normal runs publish at most one entry, stopping
-after recording a successful post. Remaining entries are left for later runs,
+after its source comment. Remaining entries are left for later runs,
 in feed order from oldest to newest.
 Normal runs stop on failed or unconfirmed posts. An entry is recorded only after
 Facebook returns a post/story ID or story URL without GraphQL errors. The script
@@ -80,6 +85,19 @@ as well as the expanded `story.id` or `story.url`. There is no automatic request
 retry. A timeout can occur after Facebook accepts a post, so check the
 timeline before rerunning after an uncertain result; an unrecorded entry will be
 attempted again on the next run.
+
+The main post is recorded **before** sending the source comment. A failed or
+unconfirmed comment stops the run, but the main post stays recorded and will not
+be published again. Comments are not retried automatically; check the post and
+add the source comment manually if needed. Comments use the same configured
+cookie identity as posts.
+
+Comment targets come from numeric post IDs, numeric Facebook post permalinks,
+or the known `S:_I<actor>:<post>:<post>` story-token format. An unrecognized story
+ID or opaque `pfbid` URL can still confirm publication, but cannot by itself
+identify the comment target. In that case the script records the main post and
+reports that the source comment must be added manually, without sending a
+comment request to a guessed target.
 
 Use `./feed2facebook.sh --check-login` to check login-token extraction without
 reading the feed, opening the database, or posting. This uses the same cookies
@@ -105,9 +123,10 @@ Missing `fb_dtsg` alone does not prove the cookies expired: the homepage respons
 or token markup may have changed. If the browser session works but the check
 still fails, share the redacted diagnostics to investigate the response.
 
-Use `./feed2facebook.sh --debug` to inspect login and an unconfirmed posting result.
-This still posts normally, with the configured audience. Besides login diagnostics,
-the debug output includes the POST response's HTTP status, content type, byte count,
+Use `./feed2facebook.sh --debug` to inspect login, post, and source-comment results.
+This still posts and comments normally, with the configured audience.
+Besides login diagnostics, the debug output includes each POST response's HTTP
+status, content type, byte count,
 every JSON frame's structure, and the result selected by fbpost. String values are replaced with
 their lengths, numbers with their types; nulls and booleans remain visible.
 Request headers, cookies, login tokens, and non-JSON response content are not
@@ -121,6 +140,16 @@ with a numeric ID captured from a successful `ComposerStoryCreateMutation`
 request in the browser. Schema changes may also require updating the pinned
 fbpost revision. Offline tests verify the integration, not whether Facebook
 currently accepts that upstream schema for your account.
+
+Source comments use fbpost's `REPLY_DOC_ID` and Relay flags for
+`useCometUFICreateCommentMutation`; `facebook_comment_doc_id` can override the
+document ID. It is validated before the main post is sent. The top-level comment
+fields and feedback-ID encoding follow
+[GoatBot-V2's createCommentPost implementation](https://github.com/Team-Calyx/GoatBot-V2/blob/df2b9ae865f27bc02bc26bfc4020ff13c7d54ea1/fb-chat-api/src/createCommentPost.js).
+The supported story-token format is documented in
+[fbk's captured story handling](https://github.com/matthewdonsemail-lab/log/blob/4b2d75478b86f77e8f4ac89ab25a7d6b310231fd/vendor/fbk/src/surfaces/feed.py#L1100).
+These are private web API implementations; live compatibility still depends on
+Facebook accepting the document IDs and payloads for your account.
 
 Run the offline Facebook tests with `uv run --locked python -m unittest -v
 test_feed2facebook`. They use temporary cookies and databases with intercepted

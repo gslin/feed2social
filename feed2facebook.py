@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import base64
 import configparser
 import datetime
 import feedparser
@@ -13,12 +14,15 @@ import re
 import sentry_sdk
 import sqlite3
 import time
+import uuid
 
 from contextlib import closing, redirect_stderr, redirect_stdout
-from curl_cffi.requests import Session
+from urllib.parse import parse_qs, urlsplit
+
+from curl_cffi.requests import RequestsError, Session
 from lxml.html.clean import Cleaner
-from scripts.fb_config import POST_DOC_ID
-from scripts.fb_session import COOKIE_KEYS, fetch_tokens, graphql_request
+from scripts.fb_config import POST_DOC_ID, REPLY_DOC_ID
+from scripts.fb_session import COOKIE_KEYS, REPLY_RELAY_PV_FLAGS, fetch_tokens, graphql_request
 from scripts.post import build_variables
 
 def tprint(*args, **kwargs):
@@ -36,6 +40,35 @@ def response_shape(value):
     if value is None or isinstance(value, bool):
         return value
     return '<{}>'.format(type(value).__name__)
+
+def feedback_id_for_post(identifier):
+    """Resolve known post identifiers without treating opaque story IDs as post IDs."""
+    if not isinstance(identifier, str):
+        return None
+    post_id = identifier.strip()
+    if not re.fullmatch(r'[0-9]+', post_id):
+        try:
+            url = urlsplit(post_id)
+            if url.scheme == 'https' and url.hostname in (
+                'facebook.com', 'www.facebook.com', 'm.facebook.com',
+            ):
+                match = re.fullmatch(r'/(?:[^/]+/)?posts/([0-9]+)/?', url.path)
+                if match:
+                    post_id = match[1]
+                elif url.path in ('/story.php', '/permalink.php'):
+                    post_id = parse_qs(url.query).get('story_fbid', [''])[0]
+            else:
+                # Captured story token: b64("S:_I<actor>:<post>:<post>").
+                decoded = base64.b64decode(post_id + '=' * (-len(post_id) % 4),
+                                           validate=True).decode('ascii')
+                match = re.fullmatch(r'S:_I[0-9]+:([0-9]+):\1', decoded)
+                if match:
+                    post_id = match[1]
+        except ValueError:
+            return None
+    if re.fullmatch(r'[0-9]+', post_id):
+        return base64.b64encode(f'feedback:{post_id}'.encode('ascii')).decode('ascii')
+    return None
 
 def debug_login_response(response, tokens):
     if response is None:
@@ -206,29 +239,37 @@ class Feed2Facebook(object):
             session.cookies.set(name, value, domain='.facebook.com', secure=True)
         return session
 
-    def fetch_login_tokens(self, session, debug=False):
-        tokens = None
-        try:
-            tokens = self.call_fbpost('fetch login tokens', fetch_tokens, session, error_hint=(
+    def fetch_login_tokens(self, session, debug=False, error_hint=None):
+        if error_hint is None:
+            error_hint = (
                 'Could not extract fb_dtsg from the Facebook homepage. '
                 'Check the login diagnostics above; open Facebook in a browser to check '
                 'for login or account verification, and refresh cookies if needed. '
                 'Run --check-login to check again without posting. '
                 'No post was sent; the entry was not recorded.'
-            ))
+            )
+        tokens = None
+        try:
+            tokens = self.call_fbpost(
+                'fetch login tokens', fetch_tokens, session, error_hint=error_hint,
+            )
             return tokens
         finally:
             if debug or tokens is None:
                 debug_login_response(session.last_get_response, tokens)
+
+    def graphql_doc_id(self, setting, default):
+        doc_id = self.config['default'].get(setting, default).strip()
+        if not doc_id or not doc_id.isascii() or not doc_id.isdigit():
+            raise configparser.Error(f'{setting} must be a numeric GraphQL document ID.')
+        return doc_id
 
     def post(self, text, debug=False):
         config = self.config['default']
         privacy = config.get('facebook_privacy', 'EVERYONE').strip().upper()
         if privacy not in ('SELF', 'FRIENDS', 'EVERYONE'):
             raise configparser.Error('facebook_privacy must be SELF, FRIENDS, or EVERYONE.')
-        doc_id = config.get('facebook_post_doc_id', POST_DOC_ID).strip()
-        if not doc_id or not doc_id.isascii() or not doc_id.isdigit():
-            raise configparser.Error('facebook_post_doc_id must be a numeric GraphQL document ID.')
+        doc_id = self.graphql_doc_id('facebook_post_doc_id', POST_DOC_ID)
 
         cookies = self.load_cookies()
         actor_id = cookies.get('i_user') or cookies['c_user']
@@ -260,10 +301,102 @@ class Feed2Facebook(object):
             story = created.get('story')
             if isinstance(story, dict):
                 identifiers.extend([story.get('id'), story.get('url')])
+            # Prefer an identifier usable for the source comment when available.
+            for value in identifiers:
+                if feedback_id_for_post(value):
+                    return value
             for value in identifiers:
                 if isinstance(value, str) and value.strip():
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
+
+    def comment(self, post_id, text, debug=False):
+        doc_id = self.graphql_doc_id('facebook_comment_doc_id', REPLY_DOC_ID)
+        feedback_id = feedback_id_for_post(post_id)
+        if feedback_id is None:
+            raise RuntimeError(
+                'Cannot resolve a numeric post ID for the source comment. '
+                'The main post was recorded; add the source URL manually. No comment was sent.'
+            )
+
+        cookies = self.load_cookies()
+        actor_id = cookies.get('i_user') or cookies['c_user']
+        # Top-level comment fields follow GoatBot-V2's createCommentPost.js;
+        # use fbpost's pinned mutation document and matching Relay flags.
+        variables = {
+            'feedLocation': 'NEWSFEED',
+            'feedbackSource': 1,
+            'groupID': None,
+            'input': {
+                'actor_id': actor_id,
+                'client_mutation_id': '1',
+                'attachments': [],
+                'feedback_id': feedback_id,
+                'formatting_style': None,
+                'message': {'ranges': [], 'text': text},
+                'reply_comment_parent_fbid': None,
+                'reply_target_clicked': False,
+                'attribution_id_v2': (
+                    'CometHomeRoot.react,comet.home,via_cold_start,'
+                    f'{int(time.time() * 1000)},156248,4748854339,,'
+                ),
+                'vod_video_timestamp': None,
+                'feedback_referrer': '/',
+                'is_tracking_encrypted': True,
+                'tracking': [],
+                'feedback_source': 'NEWS_FEED',
+                'idempotence_token': f'client:{uuid.uuid4()}',
+                'session_id': str(uuid.uuid4()),
+            },
+            'inviteShortLinkKey': None,
+            'renderLocation': None,
+            'scale': 1,
+            'useDefaultActor': False,
+            'focusCommentID': None,
+            **REPLY_RELAY_PV_FLAGS,
+        }
+        error_hint = (
+            'The main post was recorded and will not be reposted. '
+            'Check the post before adding the source comment manually; '
+            'comments are not retried automatically.'
+        )
+        try:
+            with self.create_session(cookies) as session:
+                tokens = self.fetch_login_tokens(session, debug=debug, error_hint=(
+                    'Check Facebook cookies with --check-login. '
+                    'No source comment was sent. ' + error_hint
+                ))
+                try:
+                    result = self.call_fbpost(
+                        'publish the source comment', graphql_request, session, tokens, actor_id,
+                        doc_id, 'useCometUFICreateCommentMutation', variables,
+                        error_hint='Check cookies and facebook_comment_doc_id. ' + error_hint,
+                    )
+                finally:
+                    if debug:
+                        tprint('* Facebook debug: source comment response')
+                        debug_post_response(session.last_post_response)
+        except RequestsError:
+            raise RuntimeError('Facebook source comment request failed. ' + error_hint) from None
+
+        if not isinstance(result, dict) or result.get('errors'):
+            raise RuntimeError(
+                'Facebook rejected the source comment; check cookies and '
+                'facebook_comment_doc_id. ' + error_hint
+            )
+        created = result
+        for key in ('data', 'comment_create'):
+            created = created.get(key) if isinstance(created, dict) else None
+        if isinstance(created, dict):
+            # Top-level comments use feedback_comment_edge; fbpost also reads comment.
+            edge = created.get('feedback_comment_edge')
+            node = edge.get('node') if isinstance(edge, dict) else None
+            for comment in (node, created.get('comment')):
+                if isinstance(comment, dict):
+                    comment_id = comment.get('id')
+                    if isinstance(comment_id, str) and comment_id.strip():
+                        return comment_id
+        raise RuntimeError('Facebook returned no source comment ID. ' + error_hint)
 
     def main(self, sync_only=False, debug=False, check_login=False):
         tprint('* Started.')
@@ -303,7 +436,7 @@ class Feed2Facebook(object):
                 tprint('* item.id = {}'.format(item.id))
 
                 # Remove all tags except paragraphs and the root div.
-                text = cl.clean_html(text)
+                text = cl.clean_html(text) if text.strip() else ''
 
                 # Skip if there is "#nofb" tag.
                 if '#nofb' in text:
@@ -329,7 +462,7 @@ class Feed2Facebook(object):
 
                 c.execute(sql_select, (id_str, ))
                 if 0 == c.fetchone()[0]:
-                    content = '{}\n\n{}'.format(text, url)
+                    content = text
                     tprint('* content = {}'.format(content))
 
                     if sync_only:
@@ -338,11 +471,22 @@ class Feed2Facebook(object):
                         s.commit()
                         continue
 
+                    if not content.strip():
+                        tprint('* Skipping: empty Facebook post text')
+                        continue
+
+                    # Validate comment configuration before publishing the main post.
+                    self.graphql_doc_id('facebook_comment_doc_id', REPLY_DOC_ID)
                     post_id = self.post(content, debug=debug)
                     tprint('* Facebook post = {}'.format(post_id))
 
+                    # Record the main post before commenting to avoid reposting on failure.
                     c.execute(sql_insert, (id_str, int(time.time())))
                     s.commit()
+                    comment_text = f'Sync from: {url}'
+                    tprint('* source comment = {}'.format(comment_text))
+                    comment_id = self.comment(post_id, comment_text, debug=debug)
+                    tprint('* Facebook source comment = {}'.format(comment_id))
                     break
 
 if __name__ == '__main__':
@@ -353,7 +497,7 @@ if __name__ == '__main__':
     mode.add_argument('--check-login', action='store_true',
                       help='Check Facebook login tokens without reading the feed or database')
     parser.add_argument('--debug', action='store_true',
-                        help='Print redacted Facebook login and POST details (still posts normally)')
+                        help='Print redacted login, post, and comment details (still publishes)')
     args = parser.parse_args()
 
     Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug, check_login=args.check_login)

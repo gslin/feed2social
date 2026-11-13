@@ -1,5 +1,6 @@
 """Offline integration checks using fbpost's real payload and response helpers."""
 
+import base64
 import configparser
 import io
 import json
@@ -13,7 +14,8 @@ from unittest.mock import Mock, patch
 
 import feedparser
 from curl_cffi.requests import RequestsError, Response, Session
-from scripts.fb_config import POST_DOC_ID
+from scripts.fb_config import POST_DOC_ID, REPLY_DOC_ID
+from scripts.fb_session import REPLY_RELAY_PV_FLAGS
 
 from feed2facebook import Feed2Facebook
 
@@ -53,7 +55,9 @@ class Feed2FacebookTests(unittest.TestCase):
             return self.http(session, url, **kwargs)
         self.enterContext(patch.object(Session, 'get', request))
         self.enterContext(patch.object(Session, 'post', request))
-        self.http.side_effect = [self.homepage(), self.post_response()]
+        self.http.side_effect = [
+            self.homepage(), self.post_response(), self.homepage(), self.comment_response(),
+        ]
 
     @staticmethod
     def entry(body='<p>Hello &amp; 台灣</p>', entry_id='entry-1'):
@@ -84,23 +88,34 @@ class Feed2FacebookTests(unittest.TestCase):
     def post_response(cls):
         return cls.response(json.dumps({
             'data': {'story_create': {'story': {
-                'id': 'story-1', 'url': 'https://www.facebook.com/posts/story-1',
+                'id': '12345678901234567',
+                'url': 'https://www.facebook.com/posts/12345678901234567',
             }}},
+        }))
+
+    @classmethod
+    def comment_response(cls):
+        return cls.response(json.dumps({
+            'data': {'comment_create': {'feedback_comment_edge': {'node': {'id': 'comment-1'}}}},
         }))
 
     def recorded_ids(self):
         with closing(sqlite3.connect(self.db_path)) as db:
             return [row[0] for row in db.execute('SELECT entry_id FROM entry ORDER BY entry_id')]
 
-    def posted_form(self):
-        return self.http.call_args.kwargs['data']
+    def posted_form(self, operation='ComposerStoryCreateMutation'):
+        for request in reversed(self.http.call_args_list):
+            form = request.kwargs.get('data', {})
+            if form.get('fb_api_req_friendly_name') == operation:
+                return form
+        self.fail(f'No request for {operation}')
 
     def test_posts_with_fbpost_and_impersonation_then_skips_processed_entries(self):
         self.app.main()
         self.app.main()
 
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(self.http.call_count, 4)
         session = self.http.call_args.args[0]
         self.assertEqual(session.impersonate, 'chrome124')
         self.assertFalse(session.allow_redirects)
@@ -116,9 +131,23 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(form['av'], '100001')
         variables = json.loads(form['variables'])
         self.assertEqual(variables['input']['message']['text'],
-                         'Hello & 台灣\n\nhttps://example.com/post')
+                         'Hello & 台灣')
         self.assertEqual(variables['input']['audience']['privacy']['base_state'], 'EVERYONE')
         self.assertTrue(variables['input']['idempotence_token'])
+        comment = self.posted_form('useCometUFICreateCommentMutation')
+        self.assertEqual(comment['doc_id'], REPLY_DOC_ID)
+        self.assertEqual(comment['av'], '100001')
+        variables = json.loads(comment['variables'])
+        self.assertEqual(variables['input']['message'], {
+            'ranges': [], 'text': 'Sync from: https://example.com/post',
+        })
+        self.assertEqual(base64.b64decode(variables['input']['feedback_id']).decode(),
+                         'feedback:12345678901234567')
+        self.assertIsNone(variables['input']['reply_comment_parent_fbid'])
+        self.assertFalse(variables['input']['reply_target_clicked'])
+        self.assertIsNone(variables['focusCommentID'])
+        for key, value in REPLY_RELAY_PV_FLAGS.items():
+            self.assertEqual(variables[key], value)
 
     def test_cookie_path_page_identity_privacy_and_doc_id_can_be_configured(self):
         self.cookies.append({'name': 'i_user', 'value': '200002', 'domain': '.facebook.com'})
@@ -127,7 +156,7 @@ class Feed2FacebookTests(unittest.TestCase):
         self.cookie_file.rename(other_path)
         self.app._config['default'].update(
             facebook_cookies_file='~/page.json', facebook_privacy='SELF',
-            facebook_post_doc_id='123456789',
+            facebook_post_doc_id='123456789', facebook_comment_doc_id='987654321',
         )
 
         self.app.main()
@@ -139,10 +168,16 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(variables['input']['actor_id'], '200002')
         self.assertEqual(variables['input']['audience']['privacy']['base_state'], 'SELF')
         self.assertEqual(self.http.call_args.args[0].cookies['c_user'], '100001')
+        comment = self.posted_form('useCometUFICreateCommentMutation')
+        self.assertEqual(comment['doc_id'], '987654321')
+        self.assertEqual(comment['av'], '200002')
+        self.assertEqual(json.loads(comment['variables'])['input']['actor_id'], '200002')
 
     def test_sync_only_needs_no_cookies_and_never_contacts_facebook(self):
         self.items.insert(0, self.entry(entry_id='entry-2'))
-        self.app._config['default']['facebook_c_user'] = 'incomplete-config'
+        self.app._config['default'].update(
+            facebook_c_user='incomplete-config', facebook_comment_doc_id='invalid',
+        )
         self.cookie_file.unlink()
         self.app.main(sync_only=True, debug=True)
         self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
@@ -234,7 +269,8 @@ class Feed2FacebookTests(unittest.TestCase):
         self.http.assert_not_called()
 
     def test_invalid_privacy_or_document_id_stops_before_network_access(self):
-        for key, value in (('facebook_privacy', 'ANYONE'), ('facebook_post_doc_id', 'bad')):
+        for key, value in (('facebook_privacy', 'ANYONE'), ('facebook_post_doc_id', 'bad'),
+                           ('facebook_comment_doc_id', 'bad')):
             with self.subTest(key=key):
                 self.app._config['default'][key] = value
                 with self.assertRaises(configparser.Error):
@@ -368,6 +404,7 @@ class Feed2FacebookTests(unittest.TestCase):
         del self.app._config['default']['feed_url']
         self.app._config['default'].update(
             facebook_privacy='INVALID', facebook_post_doc_id='INVALID',
+            facebook_comment_doc_id='INVALID',
         )
         self.http.side_effect = [self.homepage()]
         output = io.StringIO()
@@ -457,52 +494,55 @@ class Feed2FacebookTests(unittest.TestCase):
         self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
         self.items.append(self.entry(body='#nofb', entry_id='excluded'))
         self.http.side_effect = [
-            self.homepage(), self.post_response(), self.homepage(), self.post_response(),
+            self.homepage(), self.post_response(), self.homepage(), self.comment_response(),
+            self.homepage(), self.post_response(), self.homepage(), self.comment_response(),
         ]
 
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(self.http.call_count, 4)
         self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
-                         'Hello & 台灣\n\nhttps://example.com/post')
+                         'Hello & 台灣')
 
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
-        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(self.http.call_count, 8)
         self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
-                         'Second post\n\nhttps://example.com/post')
+                         'Second post')
 
         self.app.main()
-        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(self.http.call_count, 8)
 
     def test_failure_on_next_run_preserves_successful_entry_and_feed_order(self):
         self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
         self.http.side_effect = [
-            self.homepage(), self.post_response(),
+            self.homepage(), self.post_response(), self.homepage(), self.comment_response(),
             self.homepage(), self.response('{"errors":[{"message":"Rejected"}]}'),
         ]
 
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(self.http.call_count, 4)
 
         with self.assertRaises(RuntimeError):
             self.app.main()
 
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        posts = [call for call in self.http.call_args_list if 'data' in call.kwargs]
+        posts = [call for call in self.http.call_args_list
+                 if call.kwargs.get('data', {}).get('fb_api_req_friendly_name')
+                 == 'ComposerStoryCreateMutation']
         self.assertEqual(len(posts), 2)
         self.assertEqual(json.loads(posts[0].kwargs['data']['variables'])['input']['message']['text'],
-                         'Hello & 台灣\n\nhttps://example.com/post')
+                         'Hello & 台灣')
         self.assertEqual(json.loads(posts[1].kwargs['data']['variables'])['input']['message']['text'],
-                         'Second post\n\nhttps://example.com/post')
+                         'Second post')
 
     def test_upstream_handles_json_prefix_and_streamed_responses(self):
         payload = self.post_response().text
         for body in ('for (;;);' + payload, '{}\n' + payload + '\n{"extensions":{}}'):
             with self.subTest(body=body):
                 self.http.side_effect = [self.homepage(), self.response(body)]
-                self.assertEqual(self.app.post('Hello'), 'story-1')
+                self.assertEqual(self.app.post('Hello'), '12345678901234567')
 
     def test_debug_shows_all_response_frames_and_fbpost_selection_without_values(self):
         first = {'data': {'story_create': None}, 'has_next': True}
@@ -565,12 +605,12 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertIn('1 JSON frame(s)', output.getvalue())
         self.assertIn('fbpost result', output.getvalue())
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(self.http.call_count, 4)
 
     def test_url_only_confirmation_is_accepted(self):
         self.http.side_effect = [self.homepage(), self.response(json.dumps({
             'data': {'story_create': {'story': {'url': 'https://www.facebook.com/posts/1'}}},
-        }))]
+        })), self.homepage(), self.comment_response()]
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1'])
 
@@ -593,29 +633,172 @@ class Feed2FacebookTests(unittest.TestCase):
         response.headers['Content-Type'] = 'text/html'
         self.items.insert(0, self.entry(body='<p>Second post</p>', entry_id='entry-2'))
         self.http.side_effect = [
-            self.homepage(), response, self.homepage(), self.post_response(),
+            self.homepage(), response, self.homepage(), self.comment_response(),
+            self.homepage(), self.post_response(), self.homepage(), self.comment_response(),
         ]
 
         with patch('feed2facebook.tprint') as output:
             self.app.main()
         output.assert_any_call('* Facebook post = 12345678901234567')
         self.assertEqual(self.recorded_ids(), ['entry-1'])
-        self.assertEqual(self.http.call_count, 2)
+        self.assertEqual(self.http.call_count, 4)
 
         self.app.main()
         self.assertEqual(self.recorded_ids(), ['entry-1', 'entry-2'])
-        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(self.http.call_count, 8)
         self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
-                         'Second post\n\nhttps://example.com/post')
+                         'Second post')
 
         self.app.main()
-        self.assertEqual(self.http.call_count, 4)
+        self.assertEqual(self.http.call_count, 8)
 
     def test_creation_story_id_is_accepted_without_post_id_or_expanded_story(self):
         self.http.side_effect = [self.homepage(), self.response(json.dumps({
             'data': {'story_create': {'story_id': 'redacted-story-id', 'story': None}},
         }))]
         self.assertEqual(self.app.post('Hello'), 'redacted-story-id')
+
+    def test_body_links_stay_in_main_post_and_source_comment_follows_database_commit(self):
+        self.items[:] = [self.entry(body=(
+            '<p>Read https://example.org/first and https://example.org/second</p>'
+        ))]
+        operations = []
+
+        def respond(session, url, **kwargs):
+            form = kwargs.get('data')
+            if form is None:
+                return self.homepage()
+            operation = form['fb_api_req_friendly_name']
+            operations.append(operation)
+            if operation == 'ComposerStoryCreateMutation':
+                self.assertEqual(self.recorded_ids(), [])
+                return self.post_response()
+            self.assertEqual(operation, 'useCometUFICreateCommentMutation')
+            self.assertEqual(self.recorded_ids(), ['entry-1'])
+            return self.comment_response()
+
+        self.http.side_effect = respond
+        self.app.main()
+
+        self.assertEqual(operations, [
+            'ComposerStoryCreateMutation', 'useCometUFICreateCommentMutation',
+        ])
+        self.assertEqual(json.loads(self.posted_form()['variables'])['input']['message']['text'],
+                         'Read https://example.org/first and https://example.org/second')
+        comment = self.posted_form('useCometUFICreateCommentMutation')
+        self.assertEqual(json.loads(comment['variables'])['input']['message']['text'],
+                         'Sync from: https://example.com/post')
+
+    def test_empty_body_is_not_posted_or_recorded(self):
+        for body in ('', '   ', '<p> </p>', '<p>&nbsp;</p>'):
+            with self.subTest(body=body):
+                self.items[:] = [self.entry(body=body)]
+                self.app.main()
+        self.http.assert_not_called()
+        self.assertEqual(self.recorded_ids(), [])
+
+    def test_comment_failures_preserve_record_and_are_not_retried(self):
+        failures = [
+            self.response('private-body', status) for status in (302, 403, 429, 500)
+        ] + [
+            self.response('private-non-json'), RequestsError('private-request-detail'),
+        ] + [self.response(json.dumps(result)) for result in (
+            {'errors': [{'message': 'private-rejection'}]},
+            {'data': None}, {}, [], {'data': {'comment_create': None}},
+            {'data': {'comment_create': {'feedback_comment_edge': {'node': {'id': ''}}}}},
+            {'data': {'comment_create': {'comment': {'id': True}}}},
+            {'data': {'comment_create': {'comment': {'id': '   '}}}},
+            {'data': {'comment_create': {'comment': {'id': 'private-comment'}}},
+             'errors': [{'message': 'private-rejection'}]},
+        )]
+        for failure in failures:
+            with self.subTest(failure=failure):
+                with closing(sqlite3.connect(self.db_path)) as db:
+                    db.execute('DELETE FROM entry')
+                    db.commit()
+                self.http.reset_mock()
+                self.http.side_effect = [
+                    self.homepage(), self.post_response(), self.homepage(), failure,
+                ]
+                output = io.StringIO()
+                with redirect_stdout(output), redirect_stderr(output):
+                    with self.assertRaisesRegex(RuntimeError, 'main post was recorded') as error:
+                        self.app.main()
+                self.app.main()
+                self.assertEqual(self.recorded_ids(), ['entry-1'])
+                self.assertEqual(self.http.call_count, 4)
+                self.assertTrue(self.http.call_args.args[0]._closed)
+                self.assertEqual(output.getvalue(), '')
+                self.assertNotIn('private-', str(error.exception))
+
+    def test_comment_login_failure_keeps_post_recorded_without_claiming_no_post_was_sent(self):
+        self.items.insert(0, self.entry(entry_id='entry-2'))
+        self.http.side_effect = [
+            self.homepage(), self.post_response(), self.response('<html>Log in</html>'),
+        ]
+        with self.assertRaisesRegex(RuntimeError, 'main post was recorded') as error:
+            self.app.main()
+        self.assertIn('No source comment was sent', str(error.exception))
+        self.assertNotIn('No post was sent', str(error.exception))
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 3)
+        self.assertTrue(self.http.call_args.args[0]._closed)
+
+    def test_known_story_token_and_numeric_permalink_identify_the_comment_target(self):
+        story_id = base64.b64encode(b'S:_I100001:42:42').decode()
+        for created in (
+            {'story_id': story_id, 'story': None},
+            {'story_id': 'opaque', 'story': {'url': 'https://www.facebook.com/user/posts/42'}},
+            {'story': {'url': 'https://www.facebook.com/permalink.php?story_fbid=42&id=100001'}},
+        ):
+            with self.subTest(created=created):
+                with closing(sqlite3.connect(self.db_path)) as db:
+                    db.execute('DELETE FROM entry')
+                    db.commit()
+                self.http.side_effect = [
+                    self.homepage(), self.response(json.dumps({'data': {'story_create': created}})),
+                    self.homepage(), self.comment_response(),
+                ]
+                self.app.main()
+                form = self.posted_form('useCometUFICreateCommentMutation')
+                feedback = json.loads(form['variables'])['input']['feedback_id']
+                self.assertEqual(base64.b64decode(feedback).decode(), 'feedback:42')
+
+    def test_unrecognized_post_id_keeps_confirmation_without_guessing_comment_target(self):
+        for identifier in ('opaque-story-id', 'https://example.org/posts/42',
+                           'https://www.facebook.com/posts/pfbidOpaque',
+                           base64.b64encode(b'comment:42_99').decode()):
+            with self.subTest(identifier=identifier):
+                with closing(sqlite3.connect(self.db_path)) as db:
+                    db.execute('DELETE FROM entry')
+                    db.commit()
+                self.http.reset_mock()
+                self.http.side_effect = [self.homepage(), self.response(json.dumps({
+                    'data': {'story_create': {'story_id': identifier, 'story': None}},
+                }))]
+                with self.assertRaisesRegex(RuntimeError, 'No comment was sent'):
+                    self.app.main()
+                self.app.main()
+                self.assertEqual(self.recorded_ids(), ['entry-1'])
+                self.assertEqual(self.http.call_count, 2)
+
+    def test_comment_debug_redacts_response_and_accepts_upstream_comment_shape(self):
+        result = {'data': {'comment_create': {'comment': {'id': 'comment-1'}}},
+                  'extensions': {'token': 'private-token', 'detail': 'private-response-text'}}
+        response = self.response('for (;;);' + json.dumps(result))
+        response.headers['Set-Cookie'] = 'xs=private-cookie'
+        self.http.side_effect = [
+            self.homepage(), self.post_response(), self.homepage(), response,
+        ]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            self.app.main(debug=True)
+        self.assertIn('source comment response', output.getvalue())
+        self.assertIn('Facebook source comment = comment-1', output.getvalue())
+        for secret in ('private-token', 'private-response-text', 'private-cookie',
+                       'private-session', 'private-csrf', 'private-lsd'):
+            self.assertNotIn(secret, output.getvalue())
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
 
 
 if __name__ == '__main__':
