@@ -92,6 +92,28 @@ be published again. Comments are not retried automatically; check the post and
 add the source comment manually if needed. Comments use the same configured
 cookie identity as posts.
 
+Failed or unconfirmed source comments automatically print response diagnostics,
+even without `--debug`: the HTTP status, redacted JSON frames, and the comment
+document ID in use. GraphQL error summaries preserve numeric error codes,
+recognized severity values, transient flags, known protocol-error markers, and
+variable names mentioned in validation errors. Arbitrary error messages and
+their embedded values remain redacted. A rejection alone does not establish
+whether cookies, the document ID, or the variables caused it.
+
+To diagnose or recover a source comment on an existing post, first check whether
+the comment is already present, then run:
+
+```bash
+./feed2facebook.sh --comment-only POST_ID 'https://example.com/source' --debug
+```
+
+This sends one real source comment (`Sync from: <URL>`). It does not create a main
+post, read the RSS feed, or open/change the database. It cannot be combined with
+`--sync-only` or `--check-login`, and it does not check for duplicate comments or
+retry requests. Share the `source comment response` diagnostics if it fails.
+Rerunning normal feed mode skips the already recorded entry and may publish a
+different entry; use `--comment-only` when investigating one failed comment.
+
 Comment targets come from numeric post IDs, numeric Facebook post permalinks,
 or the known `S:_I<actor>:<post>:<post>` story-token format. An unrecognized story
 ID or opaque `pfbid` URL can still confirm publication, but cannot by itself
@@ -112,7 +134,7 @@ definition was recognized. This distinguishes a missing or empty token from a
 nonempty token that fbpost's strict formatting rules did not match.
 A successful check confirms token extraction;
 it does not test whether Facebook will accept a post. This mode cannot be combined
-with `--sync-only`.
+with `--sync-only` or `--comment-only`.
 
 A `could not fetch login tokens` error happens before any post is sent and leaves
 the entry unrecorded. `facebook_post_doc_id` is not used in this step. Login
@@ -129,6 +151,7 @@ Besides login diagnostics, the debug output includes each POST response's HTTP
 status, content type, byte count,
 every JSON frame's structure, and the result selected by fbpost. String values are replaced with
 their lengths, numbers with their types; nulls and booleans remain visible.
+The separate GraphQL error summaries retain the diagnostic fields listed above.
 Request headers, cookies, login tokens, and non-JSON response content are not
 printed. The existing feed-content log still contains the intended post text.
 If the run reports an error, check the Facebook timeline before retrying: the

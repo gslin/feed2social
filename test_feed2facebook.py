@@ -4,6 +4,7 @@ import base64
 import configparser
 import io
 import json
+import runpy
 import sqlite3
 import tempfile
 import unittest
@@ -799,6 +800,118 @@ class Feed2FacebookTests(unittest.TestCase):
                        'private-session', 'private-csrf', 'private-lsd'):
             self.assertNotIn(secret, output.getvalue())
         self.assertEqual(self.recorded_ids(), ['entry-1'])
+
+    def test_comment_rejection_prints_error_codes_and_schema_hints_without_debug(self):
+        response = self.response(json.dumps({
+            'errors': [{
+                'code': 1675012, 'severity': 'CRITICAL',
+                'message': 'A server error noncoercible_variable_value occured. private-csrf',
+                'description': "Variable '$translationType' contains private-value",
+                'extensions': {
+                    'api_error_code': 100, 'error_subcode': 33, 'is_transient': False,
+                    'debug_info': 'Missing value for required variable: canUseNicknameOnComet',
+                    'token': 'private-token',
+                },
+            }],
+        }))
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Set-Cookie'] = 'xs=private-response-cookie'
+        self.http.side_effect = [
+            self.homepage(), self.post_response(), self.homepage(), response,
+        ]
+        output = io.StringIO()
+        with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, 'response diagnostics above'):
+                self.app.main()
+        log = output.getvalue()
+        self.assertIn(f'source comment response (doc_id={REPLY_DOC_ID})', log)
+        self.assertIn('HTTP 200', log)
+        self.assertIn('GraphQL errors #1', log)
+        self.assertIn('"code": 1675012', log)
+        self.assertIn('"severity": "CRITICAL"', log)
+        self.assertIn('"extensions.api_error_code": 100', log)
+        self.assertIn('"extensions.error_subcode": 33', log)
+        self.assertIn('"extensions.is_transient": false', log)
+        self.assertIn('"message_markers": ["noncoercible_variable_value"]', log)
+        self.assertIn('"variables": ["canUseNicknameOnComet", "translationType"]', log)
+        for secret in ('private-csrf', 'private-value', 'private-token', 'private-response-cookie',
+                       'private-session', 'private-lsd'):
+            self.assertNotIn(secret, log)
+        self.app.main()
+        self.assertEqual(self.recorded_ids(), ['entry-1'])
+        self.assertEqual(self.http.call_count, 4)
+
+    def test_comment_diagnostics_cover_http_errors_timeouts_and_unconfirmed_results(self):
+        for response, diagnostic in (
+            (self.response('private-body', 429), 'HTTP 429'),
+            (RequestsError('private-timeout'), 'no HTTP response received'),
+            (self.response('{"data":{"comment_create":null}}'), '"comment_create": null'),
+        ):
+            with self.subTest(diagnostic=diagnostic):
+                self.http.reset_mock()
+                self.http.side_effect = [self.homepage(), response]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaises(RuntimeError):
+                        self.app.comment('42', 'Sync from: https://example.com/post')
+                log = output.getvalue()
+                self.assertIn('source comment response', log)
+                self.assertIn(diagnostic, log)
+                self.assertNotIn('private-', log)
+                self.assertEqual(self.http.call_count, 2)
+
+    def test_comment_only_bypasses_main_post_feed_database_and_post_settings(self):
+        self.db_path.unlink()
+        del self.app._config['default']['feed_url']
+        self.app._config['default'].update(
+            facebook_privacy='INVALID', facebook_post_doc_id='INVALID',
+        )
+        self.http.side_effect = [self.homepage(), self.comment_response()]
+        with (patch('feed2facebook.feedparser.parse') as parse,
+              patch('feed2facebook.sqlite3.connect') as connect,
+              patch.object(self.app, 'post') as post):
+            self.app.main(comment_only=('42', 'https://example.org/source'))
+        parse.assert_not_called()
+        connect.assert_not_called()
+        post.assert_not_called()
+        self.assertFalse(self.db_path.exists())
+        self.assertEqual(self.http.call_count, 2)
+        form = self.posted_form('useCometUFICreateCommentMutation')
+        variables = json.loads(form['variables'])
+        self.assertEqual(variables['input']['message']['text'],
+                         'Sync from: https://example.org/source')
+        self.assertEqual(base64.b64decode(variables['input']['feedback_id']).decode(), 'feedback:42')
+
+    def test_comment_only_failure_does_not_claim_main_post_was_recorded(self):
+        self.http.side_effect = [self.homepage(), self.response('{"errors":[{"code":1675012}]}')]
+        with self.assertRaisesRegex(RuntimeError, 'No main post was created') as error:
+            self.app.main(comment_only=('42', 'https://example.org/source'))
+        self.assertNotIn('main post was recorded', str(error.exception))
+        self.assertEqual(self.recorded_ids(), [])
+        self.assertEqual(self.http.call_count, 2)
+
+    def test_comment_only_rejects_invalid_arguments_before_network_access(self):
+        for post_id, source in (
+            ('opaque-id', 'https://example.org/source'),
+            ('42', '/relative'), ('42', 'file:///private'), ('42', 'https://'),
+            ('42', 'https://example.org/\nprivate'), ('42', 'https://[invalid'),
+        ):
+            with self.subTest(post_id=post_id, source=source):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    self.app.main(comment_only=(post_id, source))
+        self.http.assert_not_called()
+        self.assertEqual(self.recorded_ids(), [])
+
+    def test_comment_only_cli_is_mutually_exclusive_with_other_modes(self):
+        script = str(Path(__file__).with_name('feed2facebook.py'))
+        for option in ('--sync-only', '--check-login'):
+            with self.subTest(option=option):
+                with (patch('sys.argv', [script, '--comment-only', '42', 'https://example.org', option]),
+                      redirect_stderr(io.StringIO())):
+                    with self.assertRaises(SystemExit) as error:
+                        runpy.run_path(script, run_name='__main__')
+                self.assertEqual(error.exception.code, 2)
+        self.http.assert_not_called()
 
 
 if __name__ == '__main__':

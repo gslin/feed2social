@@ -41,6 +41,61 @@ def response_shape(value):
         return value
     return '<{}>'.format(type(value).__name__)
 
+def graphql_error_details(frame):
+    """Keep error codes and schema hints without logging arbitrary error messages."""
+    errors = frame.get('errors') if isinstance(frame, dict) else None
+    if not isinstance(errors, list):
+        return []
+    details = []
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        detail = {}
+        messages = []
+        for prefix, fields in (('', error), ('extensions.', error.get('extensions'))):
+            if not isinstance(fields, dict):
+                continue
+            for key in ('code', 'api_error_code', 'error_subcode'):
+                value = fields.get(key)
+                if type(value) is int and 0 <= value < 2**31:
+                    detail[prefix + key] = value
+            if fields.get('severity') in ('CRITICAL', 'ERROR', 'WARNING', 'INFO'):
+                detail[prefix + 'severity'] = fields['severity']
+            if isinstance(fields.get('is_transient'), bool):
+                detail[prefix + 'is_transient'] = fields['is_transient']
+            for key in ('message', 'description', 'summary', 'debug_info'):
+                if isinstance(fields.get(key), str):
+                    messages.append(fields[key])
+        message = '\n'.join(messages)
+        detail['message_markers'] = [marker for marker in (
+            'missing_required_variable_value', 'noncoercible_variable_value',
+            'persisted_query_not_found', 'PersistedQueryNotFound',
+        ) if marker in message]
+        # Only GraphQL variable names are copied, never their values or surrounding text.
+        detail['variables'] = sorted(set(re.findall(
+            r'\bvariable(?:\s*:\s*[\'\"]?\$?|\s+[\'\"]\$?|\s+\$)'
+            r'([A-Za-z_][A-Za-z0-9_]{0,127})\b', message, re.IGNORECASE,
+        )))
+        details.append(detail)
+    return details
+
+def created_comment_id(result):
+    if not isinstance(result, dict) or result.get('errors'):
+        return None
+    created = result
+    for key in ('data', 'comment_create'):
+        created = created.get(key) if isinstance(created, dict) else None
+    if isinstance(created, dict):
+        # Top-level comments use feedback_comment_edge; fbpost also reads comment.
+        edge = created.get('feedback_comment_edge')
+        node = edge.get('node') if isinstance(edge, dict) else None
+        for comment in (node, created.get('comment')):
+            if isinstance(comment, dict):
+                comment_id = comment.get('id')
+                if isinstance(comment_id, str) and comment_id.strip():
+                    return comment_id
+    return None
+
 def feedback_id_for_post(identifier):
     """Resolve known post identifiers without treating opaque story IDs as post IDs."""
     if not isinstance(identifier, str):
@@ -139,6 +194,11 @@ def debug_post_response(response):
         tprint('* Facebook debug: response JSON #{} = {}'.format(
             number, json.dumps(response_shape(frame), ensure_ascii=False),
         ))
+        errors = graphql_error_details(frame)
+        if errors:
+            tprint('* Facebook debug: GraphQL errors #{} = {}'.format(
+                number, json.dumps(errors, ensure_ascii=False),
+            ))
 
 class FacebookSession(Session):
     last_get_response = None
@@ -310,13 +370,15 @@ class Feed2Facebook(object):
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
 
-    def comment(self, post_id, text, debug=False):
+    def comment(self, post_id, text, debug=False, *, post_recorded=True):
+        post_status = ('The main post was recorded and will not be reposted.' if post_recorded
+                       else 'No main post was created or database record changed.')
         doc_id = self.graphql_doc_id('facebook_comment_doc_id', REPLY_DOC_ID)
         feedback_id = feedback_id_for_post(post_id)
         if feedback_id is None:
             raise RuntimeError(
-                'Cannot resolve a numeric post ID for the source comment. '
-                'The main post was recorded; add the source URL manually. No comment was sent.'
+                'Cannot resolve a numeric post ID for the source comment. ' + post_status +
+                ' Add the source URL manually. No comment was sent.'
             )
 
         cookies = self.load_cookies()
@@ -355,11 +417,12 @@ class Feed2Facebook(object):
             'focusCommentID': None,
             **REPLY_RELAY_PV_FLAGS,
         }
-        error_hint = (
-            'The main post was recorded and will not be reposted. '
+        error_hint = post_status + (
+            ' '
             'Check the post before adding the source comment manually; '
             'comments are not retried automatically.'
         )
+        comment_id = None
         try:
             with self.create_session(cookies) as session:
                 tokens = self.fetch_login_tokens(session, debug=debug, error_hint=(
@@ -372,34 +435,42 @@ class Feed2Facebook(object):
                         doc_id, 'useCometUFICreateCommentMutation', variables,
                         error_hint='Check cookies and facebook_comment_doc_id. ' + error_hint,
                     )
+                    comment_id = created_comment_id(result)
                 finally:
-                    if debug:
-                        tprint('* Facebook debug: source comment response')
+                    if debug or comment_id is None:
+                        tprint('* Facebook debug: source comment response (doc_id={})'.format(doc_id))
                         debug_post_response(session.last_post_response)
         except RequestsError:
             raise RuntimeError('Facebook source comment request failed. ' + error_hint) from None
 
         if not isinstance(result, dict) or result.get('errors'):
             raise RuntimeError(
-                'Facebook rejected the source comment; check cookies and '
-                'facebook_comment_doc_id. ' + error_hint
+                'Facebook rejected the source comment; see the response diagnostics above. '
+                + error_hint
             )
-        created = result
-        for key in ('data', 'comment_create'):
-            created = created.get(key) if isinstance(created, dict) else None
-        if isinstance(created, dict):
-            # Top-level comments use feedback_comment_edge; fbpost also reads comment.
-            edge = created.get('feedback_comment_edge')
-            node = edge.get('node') if isinstance(edge, dict) else None
-            for comment in (node, created.get('comment')):
-                if isinstance(comment, dict):
-                    comment_id = comment.get('id')
-                    if isinstance(comment_id, str) and comment_id.strip():
-                        return comment_id
+        if comment_id is not None:
+            return comment_id
         raise RuntimeError('Facebook returned no source comment ID. ' + error_hint)
 
-    def main(self, sync_only=False, debug=False, check_login=False):
+    def main(self, sync_only=False, debug=False, check_login=False, comment_only=None):
         tprint('* Started.')
+
+        if comment_only is not None:
+            post_id, source_url = comment_only
+            try:
+                parsed = urlsplit(source_url)
+                valid = (parsed.scheme in ('http', 'https') and bool(parsed.hostname)
+                         and not any(character.isspace() for character in source_url))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError('The source URL must be an absolute HTTP or HTTPS URL.')
+            text = f'Sync from: {source_url}'
+            tprint('* comment-only: sending one source comment to {}'.format(post_id))
+            tprint('* source comment = {}'.format(text))
+            comment_id = self.comment(post_id, text, debug=debug, post_recorded=False)
+            tprint('* Facebook source comment = {}'.format(comment_id))
+            return
 
         if check_login:
             with self.create_session(self.load_cookies()) as session:
@@ -496,8 +567,11 @@ if __name__ == '__main__':
                       help='Only sync feed to database without posting to Facebook')
     mode.add_argument('--check-login', action='store_true',
                       help='Check Facebook login tokens without reading the feed or database')
+    mode.add_argument('--comment-only', nargs=2, metavar=('POST_ID', 'SOURCE_URL'),
+                      help='Send one source comment to an existing post without reading the feed or database')
     parser.add_argument('--debug', action='store_true',
                         help='Print redacted login, post, and comment details (still publishes)')
     args = parser.parse_args()
 
-    Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug, check_login=args.check_login)
+    Feed2Facebook().main(sync_only=args.sync_only, debug=args.debug, check_login=args.check_login,
+                         comment_only=args.comment_only)
