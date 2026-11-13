@@ -119,8 +119,23 @@ Rerunning normal feed mode skips the already recorded entry and may publish a
 different entry; use `--comment-only` when investigating one failed comment.
 
 Comment targets come from numeric post IDs, numeric Facebook post permalinks,
-or the known `S:_I<actor>:<post>:<post>` story-token format. An unrecognized story
-ID or opaque `pfbid` URL can still confirm publication, but cannot by itself
+or the known `S:_I<actor>:<post>:<post>` story-token format. Before commenting,
+the script reads the post page with the configured cookies and extracts the
+server-issued feedback ID from embedded JSON identifying that post. It uses
+the returned ID unchanged instead of encoding `feedback:<post_id>` locally;
+Facebook can reject that derived value even after successfully creating the
+post. Canonical permalink redirects are followed only over HTTPS on supported
+Facebook hosts, with a limit of three redirects.
+
+The lookup matches the post ID or story token, or a feedback object's
+`subscription_target_id`. It excludes comment nodes and does not select IDs
+from unrelated or shared stories. Missing or conflicting feedback IDs stop the
+run before sending any comment; the main post remains recorded. Debug output
+includes the lookup's HTTP status, parsed JSON script count, and matching ID
+count, without printing page content.
+
+An unrecognized story ID or opaque `pfbid` URL can still confirm publication,
+but cannot by itself
 identify the comment target. In that case the script records the main post and
 reports that the source comment must be added manually, without sending a
 comment request to a guessed target.
@@ -173,8 +188,13 @@ currently accepts that upstream schema for your account.
 Source comments use fbpost's `REPLY_DOC_ID` and Relay flags for
 `useCometUFICreateCommentMutation`; `facebook_comment_doc_id` can override the
 document ID. It is validated before the main post is sent. The top-level comment
-fields and feedback-ID encoding follow
+fields follow
 [GoatBot-V2's createCommentPost implementation](https://github.com/Team-Calyx/GoatBot-V2/blob/df2b9ae865f27bc02bc26bfc4020ff13c7d54ea1/fb-chat-api/src/createCommentPost.js).
+Server-issued feedback IDs come from Story feedback data, as read by
+[fbk's feedback extraction](https://github.com/matthewdonsemail-lab/log/blob/4b2d75478b86f77e8f4ac89ab25a7d6b310231fd/vendor/fbk/src/surfaces/feed.py#L229)
+and its [post permalink reader](https://github.com/matthewdonsemail-lab/log/blob/4b2d75478b86f77e8f4ac89ab25a7d6b310231fd/vendor/fbk/src/surfaces/comments.py).
+Matching feedback to `subscription_target_id` follows
+[facebook-scraper's post extraction](https://github.com/kevinzg/facebook-scraper/blob/master/facebook_scraper/extractors.py#L821).
 The supported story-token format is documented in
 [fbk's captured story handling](https://github.com/matthewdonsemail-lab/log/blob/4b2d75478b86f77e8f4ac89ab25a7d6b310231fd/vendor/fbk/src/surfaces/feed.py#L1100).
 These are private web API implementations; live compatibility still depends on

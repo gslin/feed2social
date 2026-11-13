@@ -17,9 +17,11 @@ import time
 import uuid
 
 from contextlib import closing, redirect_stderr, redirect_stdout
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 
 from curl_cffi.requests import RequestsError, Session
+from lxml.etree import ParserError
+from lxml.html import fromstring
 from lxml.html.clean import Cleaner
 from scripts.fb_config import POST_DOC_ID, REPLY_DOC_ID
 from scripts.fb_session import COOKIE_KEYS, REPLY_RELAY_PV_FLAGS, fetch_tokens, graphql_request
@@ -106,7 +108,7 @@ def created_comment_id(result):
                     return comment_id
     return None
 
-def feedback_id_for_post(identifier):
+def numeric_post_id(identifier):
     """Resolve known post identifiers without treating opaque story IDs as post IDs."""
     if not isinstance(identifier, str):
         return None
@@ -132,8 +134,43 @@ def feedback_id_for_post(identifier):
         except ValueError:
             return None
     if re.fullmatch(r'[0-9]+', post_id):
-        return base64.b64encode(f'feedback:{post_id}'.encode('ascii')).decode('ascii')
+        return post_id
     return None
+
+def feedback_ids_for_post(payload, post_id):
+    """Read server-issued feedback IDs only from data identifying the requested post."""
+    ids = set()
+    pending = [payload]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, list):
+            pending.extend(node)
+        elif isinstance(node, dict):
+            if node.get('__typename') == 'Comment':
+                continue
+            candidates = []
+            if node.get('subscription_target_id') == post_id:
+                candidates.append(node)
+            if node.get('post_id') == post_id or numeric_post_id(node.get('id')) == post_id:
+                # Story.feedback and the Comet UFI container describe this story's
+                # target. Do not search arbitrary descendants for another story's ID.
+                for path in (
+                    ('feedback',),
+                    ('comet_sections', 'feedback', 'story', 'feedback_context',
+                     'feedback_target_with_context'),
+                    ('comet_sections', 'feedback', 'story', 'story_ufi_container',
+                     'story', 'feedback_context', 'feedback_target_with_context'),
+                ):
+                    target = node
+                    for key in path:
+                        target = target.get(key) if isinstance(target, dict) else None
+                    candidates.append(target)
+            for target in candidates:
+                value = target.get('id') if isinstance(target, dict) else None
+                if isinstance(value, str) and value.strip():
+                    ids.add(value)
+            pending.extend(node.values())
+    return ids
 
 def debug_login_response(response, tokens):
     if response is None:
@@ -376,19 +413,64 @@ class Feed2Facebook(object):
                 identifiers.extend([story.get('id'), story.get('url')])
             # Prefer an identifier usable for the source comment when available.
             for value in identifiers:
-                if feedback_id_for_post(value):
+                if numeric_post_id(value):
                     return value
             for value in identifiers:
                 if isinstance(value, str) and value.strip():
                     return value
         raise RuntimeError('Facebook returned no post ID or URL; the entry was not recorded.')
 
+    def fetch_post_feedback_id(self, session, post_id, *, debug=False, error_hint=''):
+        url = f'https://www.facebook.com/{post_id}'
+        response = None
+        ids = set()
+        script_count = 0
+        try:
+            # Numeric post URLs may redirect to a canonical permalink. Keep cookies
+            # on Facebook and stop after a bounded number of redirects.
+            for _ in range(4):
+                response = session.get(url, timeout=30)
+                if response.status_code not in (301, 302, 303, 307, 308):
+                    break
+                location = response.headers.get('Location')
+                if not location:
+                    break
+                url = urljoin(url, location)
+                parsed = urlsplit(url)
+                if (parsed.scheme != 'https' or parsed.hostname not in (
+                    'facebook.com', 'www.facebook.com', 'm.facebook.com',
+                ) or parsed.username or parsed.password or parsed.port not in (None, 443)):
+                    break
+            if response.status_code == 200 and response.text.strip():
+                document = fromstring(response.text)
+                for script in document.xpath('//script[@type="application/json"]/text()'):
+                    try:
+                        payload = json.loads(script)
+                    except ValueError:
+                        continue
+                    script_count += 1
+                    ids.update(feedback_ids_for_post(payload, post_id))
+        except (RequestsError, ValueError, ParserError):
+            raise RuntimeError('Could not read the Facebook post to resolve its feedback ID. '
+                               'No source comment was sent. ' + error_hint) from None
+        finally:
+            if debug or len(ids) != 1:
+                tprint('* Facebook feedback lookup: HTTP {}, JSON scripts={}, '
+                       'matching feedback IDs={}'.format(
+                           response.status_code if response is not None else 'unavailable',
+                           script_count, len(ids),
+                       ))
+        if len(ids) != 1:
+            raise RuntimeError('Could not resolve one feedback ID from the Facebook post. '
+                               'No source comment was sent. ' + error_hint)
+        return ids.pop()
+
     def comment(self, post_id, text, debug=False, *, post_recorded=True):
         post_status = ('The main post was recorded and will not be reposted.' if post_recorded
                        else 'No main post was created or database record changed.')
         doc_id = self.graphql_doc_id('facebook_comment_doc_id', REPLY_DOC_ID)
-        feedback_id = feedback_id_for_post(post_id)
-        if feedback_id is None:
+        post_id = numeric_post_id(post_id)
+        if post_id is None:
             raise RuntimeError(
                 'Cannot resolve a numeric post ID for the source comment. ' + post_status +
                 ' Add the source URL manually. No comment was sent.'
@@ -406,7 +488,6 @@ class Feed2Facebook(object):
                 'actor_id': actor_id,
                 'client_mutation_id': '1',
                 'attachments': [],
-                'feedback_id': feedback_id,
                 'formatting_style': None,
                 'message': {'ranges': [], 'text': text},
                 'reply_comment_parent_fbid': None,
@@ -442,6 +523,9 @@ class Feed2Facebook(object):
                     'Check Facebook cookies with --check-login. '
                     'No source comment was sent. ' + error_hint
                 ))
+                variables['input']['feedback_id'] = self.fetch_post_feedback_id(
+                    session, post_id, debug=debug, error_hint=error_hint,
+                )
                 try:
                     result = self.call_fbpost(
                         'publish the source comment', graphql_request, session, tokens, actor_id,

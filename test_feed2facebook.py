@@ -51,8 +51,12 @@ class Feed2FacebookTests(unittest.TestCase):
             'curl_cffi.Curl.perform', side_effect=AssertionError('Unexpected network access'),
         ))
         self.http = Mock()
+        self.post_page_http = Mock(side_effect=lambda session, url, **kwargs:
+                                   self.post_page(url.rsplit('/', 1)[-1]))
         # curl_cffi binds get/post with partialmethod, so patch those entry points.
         def request(session, url, **kwargs):
+            if 'data' not in kwargs and url != 'https://www.facebook.com/':
+                return self.post_page_http(session, url, **kwargs)
             return self.http(session, url, **kwargs)
         self.enterContext(patch.object(Session, 'get', request))
         self.enterContext(patch.object(Session, 'post', request))
@@ -99,6 +103,20 @@ class Feed2FacebookTests(unittest.TestCase):
         return cls.response(json.dumps({
             'data': {'comment_create': {'feedback_comment_edge': {'node': {'id': 'comment-1'}}}},
         }))
+
+    @classmethod
+    def post_page(cls, post_id, feedback_id=None):
+        payload = {'data': {'node': {
+            '__typename': 'Story', 'post_id': post_id,
+            'feedback': {'id': feedback_id or base64.b64encode(
+                f'feedback:{post_id}'.encode()).decode()},
+        }}}
+        return cls.page_payload(payload)
+
+    @classmethod
+    def page_payload(cls, payload):
+        return cls.response('<html><script type="application/json">' + json.dumps(payload)
+                            + '</script></html>')
 
     def recorded_ids(self):
         with closing(sqlite3.connect(self.db_path)) as db:
@@ -938,6 +956,105 @@ class Feed2FacebookTests(unittest.TestCase):
         self.assertEqual(variables['input']['message']['text'],
                          'Sync from: https://example.org/source')
         self.assertEqual(base64.b64decode(variables['input']['feedback_id']).decode(), 'feedback:42')
+
+    def test_comment_uses_server_feedback_id_instead_of_encoding_post_id(self):
+        post_id = '10164843302399890'
+        # An opaque server value must pass through unchanged, without adding padding.
+        feedback_id = base64.b64encode(b'feedback:pfbidServerAssignedTarget').decode().rstrip('=')
+        self.post_page_http.side_effect = None
+        self.post_page_http.return_value = self.post_page(post_id, feedback_id)
+        self.http.side_effect = [self.homepage(), self.comment_response()]
+        self.app.main(comment_only=(post_id, 'https://example.org/source'))
+        form = self.posted_form('useCometUFICreateCommentMutation')
+        self.assertEqual(json.loads(form['variables'])['input']['feedback_id'], feedback_id)
+        self.post_page_http.assert_called_once()
+        self.assertEqual(self.post_page_http.call_args.args[1],
+                         'https://www.facebook.com/' + post_id)
+        self.assertEqual(self.recorded_ids(), [])
+
+    def test_feedback_lookup_matches_post_and_excludes_shared_stories_and_comments(self):
+        self.post_page_http.side_effect = None
+        self.post_page_http.return_value = self.page_payload({'data': [
+            {'__typename': 'Story', 'post_id': '99', 'feedback': {'id': 'unrelated'}},
+            {'__typename': 'Story', 'post_id': '42', 'feedback': {'id': 'target'},
+             'attached_story': {'post_id': '77', 'feedback': {'id': 'shared'}},
+             'comments': [{'__typename': 'Comment', 'post_id': '42',
+                           'feedback': {'id': 'reply'}}]},
+            {'post_id': '42', 'feedback': {'id': 'target'}},
+        ]})
+        self.http.side_effect = [self.homepage(), self.comment_response()]
+        self.app.comment('42', 'Source')
+        self.assertEqual(json.loads(self.posted_form('useCometUFICreateCommentMutation')
+                                    ['variables'])['input']['feedback_id'], 'target')
+
+    def test_feedback_lookup_supports_ufi_container_and_subscription_target(self):
+        story_id = base64.b64encode(b'S:_I100001:42:42').decode()
+        for payload in (
+            {'__typename': 'Feedback', 'subscription_target_id': '42', 'id': 'target'},
+            {'id': story_id, 'comet_sections': {'feedback': {'story': {
+                'story_ufi_container': {'story': {'feedback_context': {
+                    'feedback_target_with_context': {'id': 'target'},
+                }}},
+            }}}},
+        ):
+            with self.subTest(payload=payload):
+                self.post_page_http.side_effect = None
+                self.post_page_http.return_value = self.page_payload(payload)
+                self.http.side_effect = [self.homepage(), self.comment_response()]
+                self.app.comment('42', 'Source')
+                self.assertEqual(json.loads(self.posted_form('useCometUFICreateCommentMutation')
+                                            ['variables'])['input']['feedback_id'], 'target')
+
+    def test_feedback_lookup_failure_preserves_main_post_without_sending_comment(self):
+        for response in (
+            self.response('<html>private-login-page</html>'),
+            self.response('<script type="application/json">{invalid}</script>'),
+            self.post_page('99', 'unrelated-feedback'),
+            self.page_payload([{'post_id': '12345678901234567', 'feedback': {'id': value}}
+                               for value in ('first', 'second')]),
+            self.response('private-response', 403), RequestsError('private-timeout'),
+        ):
+            with self.subTest(response=response):
+                with closing(sqlite3.connect(self.db_path)) as db:
+                    db.execute('DELETE FROM entry')
+                    db.commit()
+                self.http.reset_mock()
+                self.http.side_effect = [self.homepage(), self.post_response(), self.homepage()]
+                self.post_page_http.side_effect = [response]
+                output = io.StringIO()
+                with patch('feed2facebook.tprint', side_effect=print), redirect_stdout(output):
+                    with self.assertRaisesRegex(RuntimeError, 'No source comment was sent') as error:
+                        self.app.main()
+                self.assertIn('main post was recorded', str(error.exception))
+                self.assertIn('Facebook feedback lookup', output.getvalue())
+                self.assertNotIn('private-', output.getvalue() + str(error.exception))
+                self.app.main()
+                self.assertEqual(self.recorded_ids(), ['entry-1'])
+                self.assertEqual(self.http.call_count, 3)
+
+    def test_feedback_lookup_follows_facebook_permalink_redirect(self):
+        redirect = self.response('', 302)
+        redirect.headers['Location'] = '/user/posts/pfbidCanonical'
+        self.post_page_http.side_effect = [redirect, self.post_page('42', 'target')]
+        self.http.side_effect = [self.homepage(), self.comment_response()]
+        self.app.comment('42', 'Source')
+        self.assertEqual(self.post_page_http.call_args.args[1],
+                         'https://www.facebook.com/user/posts/pfbidCanonical')
+
+    def test_feedback_lookup_rejects_external_redirect_without_commenting(self):
+        for url in ('https://example.org/private', 'http://www.facebook.com/42',
+                    'https://www.facebook.com.evil.example/42'):
+            with self.subTest(url=url):
+                redirect = self.response('', 302)
+                redirect.headers['Location'] = url
+                self.post_page_http.reset_mock()
+                self.post_page_http.side_effect = [redirect]
+                self.http.reset_mock()
+                self.http.side_effect = [self.homepage()]
+                with self.assertRaisesRegex(RuntimeError, 'No main post was created'):
+                    self.app.main(comment_only=('42', 'https://example.org/source'))
+                self.post_page_http.assert_called_once()
+                self.assertEqual(self.http.call_count, 1)
 
     def test_comment_only_failure_does_not_claim_main_post_was_recorded(self):
         self.http.side_effect = [self.homepage(), self.response('{"errors":[{"code":1675012}]}')]
